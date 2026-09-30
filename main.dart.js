@@ -84958,7 +84958,7 @@ l.CX()
 r=l.d
 q=r.h(0,"TT")
 q.toString
-if(q)l.rD(new A.iE("SYS","System","TikTok direct live socket connection is not supported in web browser builds.",B.L3))
+if(q)l.rD(new A.iE("SYS","System","TikTok direct connection unsupported on web (browser socket restriction). Native Android APK works as intended.",B.L3))
 q=r.h(0,"TW")
 q.toString
 if(q){s=B.c.ir(l.at.a.a).toLowerCase()
