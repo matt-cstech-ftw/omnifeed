@@ -1,3 +1,4 @@
+Set-Content -Path "lib\main.dart" -Value @'
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -111,6 +112,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   int _portraitTabIndex = 0;
 
   final List<TikTokLiveClient> _ttClients = [];
+  final List<WebSocketChannel> _ttWebChannels = [];
   WebSocketChannel? _twitchChannel;
   WebSocketChannel? _kickChannel;
   Timer? _ytTimer;
@@ -248,6 +250,13 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       } catch (_) {}
     }
     _ttClients.clear();
+
+    for (final ch in _ttWebChannels) {
+      try {
+        ch.sink.close();
+      } catch (_) {}
+    }
+    _ttWebChannels.clear();
     _promptedHosts.clear();
 
     try {
@@ -300,14 +309,17 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   }
 
   void _attachSingleTikTokHost(String handle) {
-    if (kIsWeb) return;
-
     final cleanHandle = handle.replaceAll('@', '').trim();
     if (_ttHosts.contains(cleanHandle)) return;
 
     setState(() {
       _ttHosts.add(cleanHandle);
     });
+
+    if (kIsWeb) {
+      _connectTikTokWebRelay(cleanHandle);
+      return;
+    }
 
     runZonedGuarded(() async {
       final client = TikTokLiveClient(cleanHandle);
@@ -367,6 +379,80 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
       await client.connect();
     }, (error, stack) {});
+  }
+
+  void _connectTikTokWebRelay(String handle) {
+    final cleanHandle = handle.replaceAll('@', '').trim();
+    final bridgeUri = Uri.parse('wss://omnifeed-tiktok-bridge.m-malishefski.workers.dev/?handle=$cleanHandle');
+
+    _addEvent(StreamMessage(
+      platform: 'SYS',
+      user: 'System',
+      text: 'Connecting via Cloudflare Edge to @$cleanHandle...',
+      badgeBg: const Color(0xFF00E5FF),
+    ));
+
+    try {
+      final channel = WebSocketChannel.connect(bridgeUri);
+      _ttWebChannels.add(channel);
+
+      channel.stream.listen((raw) {
+        final data = jsonDecode(raw.toString());
+        final event = data['event'];
+
+        if (event == 'connected') {
+          _addEvent(StreamMessage(
+            platform: 'SYS',
+            user: 'System',
+            text: 'Connected to TikTok @${data['handle']}',
+            badgeBg: Colors.green,
+            host: data['handle'],
+          ));
+        } else if (event == 'chat') {
+          _addChat(StreamMessage(
+            platform: 'TT',
+            user: data['user'] ?? 'TikTokUser',
+            text: data['comment'] ?? '',
+            badgeBg: _colors['TT']!,
+            host: data['host'],
+            roles: [if (data['isMod'] == true) 'MOD'],
+          ));
+        } else if (event == 'gift') {
+          final count = data['count'] ?? 1;
+          final giftName = data['giftName'] ?? 'Gift';
+          final diamonds = (data['diamondCount'] ?? 1) * count;
+          _recordGift(data['user'] ?? 'TikTokUser', diamonds);
+          _addEvent(StreamMessage(
+            platform: 'TT',
+            user: data['user'] ?? 'TikTokUser',
+            text: 'sent $count x $giftName',
+            badgeBg: const Color(0xFFFE2C55),
+            host: data['host'],
+          ));
+        } else if (event == 'error') {
+          _addEvent(StreamMessage(
+            platform: 'SYS',
+            user: 'Error',
+            text: 'TT: ${data['message']}',
+            badgeBg: Colors.redAccent,
+          ));
+        }
+      }, onError: (err) {
+        _addEvent(StreamMessage(
+          platform: 'SYS',
+          user: 'Error',
+          text: 'TT Relay error: $err',
+          badgeBg: Colors.redAccent,
+        ));
+      });
+    } catch (e) {
+      _addEvent(StreamMessage(
+        platform: 'SYS',
+        user: 'Error',
+        text: 'TT Connection failed: $e',
+        badgeBg: Colors.redAccent,
+      ));
+    }
   }
 
   Future<String?> _resolveHandleFromTikTokUserId(String userId) async {
@@ -496,25 +582,25 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
     // 1. TikTok Ingestion
     if (_enabled['TT']!) {
-      if (kIsWeb) {
-        _addEvent(StreamMessage(
-          platform: 'SYS',
-          user: 'System',
-          text: 'TikTok direct connection unsupported on web (browser socket restriction). Native Android APK works as intended.',
-          badgeBg: Colors.orange,
-        ));
-      } else {
-        final prim = _ttPrimaryInput.text.trim().replaceAll('@', '');
-        if (prim.isNotEmpty) {
-          if (!_ttHosts.contains(prim)) {
+      final prim = _ttPrimaryInput.text.trim().replaceAll('@', '');
+      if (prim.isNotEmpty) {
+        if (!_ttHosts.contains(prim)) {
+          _ttHosts.insert(0, prim);
+        } else {
+          final idx = _ttHosts.indexOf(prim);
+          if (idx != 0) {
+            _ttHosts.removeAt(idx);
             _ttHosts.insert(0, prim);
-          } else {
-            final idx = _ttHosts.indexOf(prim);
-            if (idx != 0) {
-              _ttHosts.removeAt(idx);
-              _ttHosts.insert(0, prim);
-            }
           }
+        }
+      }
+
+      if (kIsWeb) {
+        for (final handle in _ttHosts) {
+          _connectTikTokWebRelay(handle);
+        }
+      } else {
+        if (prim.isNotEmpty) {
           _probeActiveCoHosts(prim);
         }
 
@@ -1411,3 +1497,4 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 }
+'@
