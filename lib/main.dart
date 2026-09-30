@@ -1,4 +1,3 @@
-Set-Content -Path "lib\main.dart" -Value @'
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -1497,4 +1496,3 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 }
-'@
