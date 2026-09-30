@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -299,6 +300,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   }
 
   void _attachSingleTikTokHost(String handle) {
+    if (kIsWeb) return; // Guard for web builds
+
     final cleanHandle = handle.replaceAll('@', '').trim();
     if (_ttHosts.contains(cleanHandle)) return;
 
@@ -367,6 +370,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   }
 
   Future<String?> _resolveHandleFromTikTokUserId(String userId) async {
+    if (kIsWeb) return null;
     try {
       final url = Uri.parse(
         'https://webcast.tiktok.com/webcast/user/profile/?user_id=$userId&aid=1988',
@@ -393,24 +397,11 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         }
       }
     } catch (_) {}
-
-    try {
-      final url = Uri.parse('https://www.tiktok.com/@$userId');
-      final resp = await http.get(url, headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      }).timeout(const Duration(seconds: 4));
-
-      final match = RegExp(r'"uniqueId":"([^"]+)"').firstMatch(resp.body);
-      if (match != null && match.group(1) != null) {
-        return match.group(1);
-      }
-    } catch (_) {}
-
     return null;
   }
 
   Future<void> _probeActiveCoHosts(String primaryHandle) async {
+    if (kIsWeb) return;
     final clean = primaryHandle.replaceAll('@', '').trim();
 
     try {
@@ -500,113 +491,122 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   void _connectStreams() {
     _disconnectAll();
 
-    // 1. TikTok Ingestion
+    // 1. TikTok Ingestion (Safely guarded for web builds)
     if (_enabled['TT']!) {
-      final prim = _ttPrimaryInput.text.trim().replaceAll('@', '');
-      if (prim.isNotEmpty) {
-        if (!_ttHosts.contains(prim)) {
-          _ttHosts.insert(0, prim);
-        } else {
-          final idx = _ttHosts.indexOf(prim);
-          if (idx != 0) {
-            _ttHosts.removeAt(idx);
+      if (kIsWeb) {
+        _addEvent(StreamMessage(
+          platform: 'SYS',
+          user: 'System',
+          text: 'TikTok direct live socket connection is not supported in web browser builds.',
+          badgeBg: Colors.orange,
+        ));
+      } else {
+        final prim = _ttPrimaryInput.text.trim().replaceAll('@', '');
+        if (prim.isNotEmpty) {
+          if (!_ttHosts.contains(prim)) {
             _ttHosts.insert(0, prim);
+          } else {
+            final idx = _ttHosts.indexOf(prim);
+            if (idx != 0) {
+              _ttHosts.removeAt(idx);
+              _ttHosts.insert(0, prim);
+            }
           }
         }
-      }
 
-      if (prim.isNotEmpty) {
-        _probeActiveCoHosts(prim);
-      }
+        if (prim.isNotEmpty) {
+          _probeActiveCoHosts(prim);
+        }
 
-      for (final handle in _ttHosts) {
-        runZonedGuarded(() async {
-          final client = TikTokLiveClient(handle);
-          _ttClients.add(client);
+        for (final handle in _ttHosts) {
+          runZonedGuarded(() async {
+            final client = TikTokLiveClient(handle);
+            _ttClients.add(client);
 
-          _addEvent(StreamMessage(
-            platform: 'SYS',
-            user: 'System',
-            text: 'Connecting to @$handle...',
-            badgeBg: const Color(0xFF00E5FF),
-          ));
-
-          client.on(EventType.connected, (evt) {
             _addEvent(StreamMessage(
               platform: 'SYS',
               user: 'System',
-              text: 'Connected to @$handle',
-              badgeBg: Colors.green,
-              host: handle,
+              text: 'Connecting to @$handle...',
+              badgeBg: const Color(0xFF00E5FF),
             ));
-          });
 
-          client.on(EventType.chat, (evt) {
-            final data = evt.data as Map<String, dynamic>?;
-            final userMap = data?['user'] as Map<String, dynamic>?;
-            final sender = userMap?['nickname']?.toString() ??
-                userMap?['uniqueId']?.toString() ??
-                'TikTokUser';
-            final comment = data?['content']?.toString() ?? '';
-            final isMod = userMap?['isModerator'] == true;
+            client.on(EventType.connected, (evt) {
+              _addEvent(StreamMessage(
+                platform: 'SYS',
+                user: 'System',
+                text: 'Connected to @$handle',
+                badgeBg: Colors.green,
+                host: handle,
+              ));
+            });
 
-            if (comment.isNotEmpty) {
-              _addChat(StreamMessage(
+            client.on(EventType.chat, (evt) {
+              final data = evt.data as Map<String, dynamic>?;
+              final userMap = data?['user'] as Map<String, dynamic>?;
+              final sender = userMap?['nickname']?.toString() ??
+                  userMap?['uniqueId']?.toString() ??
+                  'TikTokUser';
+              final comment = data?['content']?.toString() ?? '';
+              final isMod = userMap?['isModerator'] == true;
+
+              if (comment.isNotEmpty) {
+                _addChat(StreamMessage(
+                  platform: 'TT',
+                  user: sender,
+                  text: comment,
+                  badgeBg: _colors['TT']!,
+                  host: _ttHosts.length > 1 ? handle : null,
+                  roles: [if (isMod) 'MOD'],
+                ));
+              }
+            });
+
+            client.on(EventType.gift, (evt) {
+              final data = evt.data as Map<String, dynamic>?;
+              final userMap = data?['user'] as Map<String, dynamic>?;
+              final sender = userMap?['nickname']?.toString() ??
+                  userMap?['uniqueId']?.toString() ??
+                  'TikTokUser';
+              final giftMap = data?['gift'] as Map<String, dynamic>?;
+              final giftName = giftMap?['name']?.toString() ?? 'Gift';
+              final count = int.tryParse(data?['repeatCount']?.toString() ?? '1') ?? 1;
+              final diamondCount = int.tryParse(giftMap?['diamondCount']?.toString() ?? '1') ?? 1;
+
+              _recordGift(sender, diamondCount * count);
+              _addEvent(StreamMessage(
                 platform: 'TT',
                 user: sender,
-                text: comment,
-                badgeBg: _colors['TT']!,
+                text: 'sent $count x $giftName',
+                badgeBg: const Color(0xFFFE2C55),
                 host: _ttHosts.length > 1 ? handle : null,
-                roles: [if (isMod) 'MOD'],
+              ));
+            });
+
+            try {
+              await client.connect();
+            } catch (e) {
+              _addEvent(StreamMessage(
+                platform: 'SYS',
+                user: 'Error',
+                text: 'TT @$handle: $e',
+                badgeBg: Colors.redAccent,
+              ));
+            }
+          }, (error, stack) {
+            if (!error.toString().contains('Software caused connection abort')) {
+              _addEvent(StreamMessage(
+                platform: 'SYS',
+                user: 'Error',
+                text: 'TT @$handle: $error',
+                badgeBg: Colors.redAccent,
               ));
             }
           });
-
-          client.on(EventType.gift, (evt) {
-            final data = evt.data as Map<String, dynamic>?;
-            final userMap = data?['user'] as Map<String, dynamic>?;
-            final sender = userMap?['nickname']?.toString() ??
-                userMap?['uniqueId']?.toString() ??
-                'TikTokUser';
-            final giftMap = data?['gift'] as Map<String, dynamic>?;
-            final giftName = giftMap?['name']?.toString() ?? 'Gift';
-            final count = int.tryParse(data?['repeatCount']?.toString() ?? '1') ?? 1;
-            final diamondCount = int.tryParse(giftMap?['diamondCount']?.toString() ?? '1') ?? 1;
-
-            _recordGift(sender, diamondCount * count);
-            _addEvent(StreamMessage(
-              platform: 'TT',
-              user: sender,
-              text: 'sent $count x $giftName',
-              badgeBg: const Color(0xFFFE2C55),
-              host: _ttHosts.length > 1 ? handle : null,
-            ));
-          });
-
-          try {
-            await client.connect();
-          } catch (e) {
-            _addEvent(StreamMessage(
-              platform: 'SYS',
-              user: 'Error',
-              text: 'TT @$handle: $e',
-              badgeBg: Colors.redAccent,
-            ));
-          }
-        }, (error, stack) {
-          if (!error.toString().contains('Software caused connection abort')) {
-            _addEvent(StreamMessage(
-              platform: 'SYS',
-              user: 'Error',
-              text: 'TT @$handle: $error',
-              badgeBg: Colors.redAccent,
-            ));
-          }
-        });
+        }
       }
     }
 
-    // 2. Twitch Ingestion
+    // 2. Twitch Ingestion (Web-compatible WebSocket)
     if (_enabled['TW']!) {
       final user = _twInput.text.trim().toLowerCase();
       if (user.isNotEmpty) {
@@ -650,7 +650,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       }
     }
 
-    // 3. Kick Ingestion
+    // 3. Kick Ingestion (Web-compatible WebSocket)
     if (_enabled['KC']!) {
       final kickSlug = _kcInput.text.trim().toLowerCase();
       if (kickSlug.isNotEmpty) {
@@ -658,7 +658,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       }
     }
 
-    // 4. YouTube Ingestion
+    // 4. YouTube Ingestion (Web-compatible HTTP Polling)
     if (_enabled['YT']!) {
       final ytId = _ytInput.text.trim();
       if (ytId.isNotEmpty) {
