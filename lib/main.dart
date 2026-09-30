@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'tiktok_bridge.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -118,6 +120,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   bool _isConnected = false;
   String _statusText = 'Idle - Enter handles and connect';
 
+  String _accessKey = '';
+
   @override
   void initState() {
     super.initState();
@@ -132,7 +136,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkHeaderOverflow());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkHeaderOverflow();
+      _loadAuthKey();
+    });
   }
 
   @override
@@ -148,6 +155,119 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     _kcInput.dispose();
     _ytInput.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAuthKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = prefs.getString('omnifeed_access_key') ?? '';
+    if (key.isNotEmpty) {
+      setState(() => _accessKey = key);
+    } else {
+      _showAuthPrompt();
+    }
+  }
+
+  void _showAuthPrompt() {
+    final entry = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Color(0xFF00E5FF), size: 20),
+            SizedBox(width: 8),
+            Text('Access Passphrase', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the access phrase to unlock feed relay access:',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: entry,
+              decoration: const InputDecoration(
+                hintText: 'Passphrase (#...)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () async {
+              final val = entry.text.trim();
+              if (val.isNotEmpty) {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('omnifeed_access_key', val);
+                setState(() => _accessKey = val);
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Unlock', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSupportModal() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        title: const Row(
+          children: [
+            Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 20),
+            SizedBox(width: 8),
+            Text('Support OmniFeed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'OmniFeed is maintained independently. Tips cover server relay container costs and continuous feature updates.',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            const SizedBox(height: 14),
+            ListTile(
+              dense: true,
+              tileColor: const Color(0xFF22222B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              leading: const Icon(Icons.payment, color: Color(0xFF00E5FF)),
+              title: const Text('Tip via PayPal', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              subtitle: const Text('paypal.me/mmalishefski', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              onTap: () async {
+                final uri = Uri.parse('https://paypal.me/mmalishefski');
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Colors.grey)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _checkHeaderOverflow() {
@@ -382,7 +502,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
   void _connectTikTokWebRelay(String handle) {
     final cleanHandle = handle.replaceAll('@', '').trim();
-    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws');
+    final encodedToken = Uri.encodeComponent(_accessKey);
+    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws?token=$encodedToken');
 
     _addEvent(StreamMessage(
       platform: 'SYS',
@@ -395,7 +516,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       final channel = WebSocketChannel.connect(bridgeUri);
       _ttWebChannels.add(channel);
 
-      // Instruct cloud relay to attach to this TikTok streamer
       channel.sink.add(jsonEncode({'action': 'connect', 'handle': cleanHandle}));
 
       channel.stream.listen((raw) {
@@ -935,7 +1055,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             '3. Tap the +0 badge under TikTok to manage active co-hosts manually.\n'
             '4. Automatic prompts appear when rival co-hosts are active.\n'
             '5. Works seamlessly in both landscape (3 panes) and portrait (focused chat + tabs).\n'
-            '6. Hit CONNECT to aggregate chats in real-time.',
+            '6. Hit CONNECT to aggregate chats in real-time.\n'
+            '7. Passphrase key can be updated in Settings.',
             style: TextStyle(fontSize: 12),
           ),
         ),
@@ -1204,6 +1325,16 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                 _buildTogglePill('YT', 'YouTube'),
                 const SizedBox(width: 4),
                 IconButton(
+                  icon: const Icon(Icons.favorite_outline, size: 18, color: Color(0xFFFE2C55)),
+                  tooltip: 'Support OmniFeed',
+                  onPressed: _showSupportModal,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.key_outlined, size: 18, color: Color(0xFF00E5FF)),
+                  tooltip: 'Change Passphrase',
+                  onPressed: _showAuthPrompt,
+                ),
+                IconButton(
                   icon: const Icon(Icons.color_lens_outlined, size: 18, color: Colors.grey),
                   tooltip: 'Reset Colors',
                   onPressed: () => setState(() => _colors.addAll(_factoryColors)),
@@ -1265,6 +1396,22 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               const SizedBox(width: 4),
               _buildTogglePill('YT', 'YouTube'),
               const SizedBox(width: 4),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.favorite_outline, size: 18, color: Color(0xFFFE2C55)),
+                tooltip: 'Support OmniFeed',
+                onPressed: _showSupportModal,
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.key_outlined, size: 18, color: Color(0xFF00E5FF)),
+                tooltip: 'Change Passphrase',
+                onPressed: _showAuthPrompt,
+              ),
+              const SizedBox(width: 6),
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),

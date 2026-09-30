@@ -39,6 +39,8 @@ dependencies:
   piratetok_live: ^0.1.5
   pusher_channels_flutter: ^2.6.0
   flutter_colorpicker: ^1.1.0
+  shared_preferences: ^2.5.5
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
