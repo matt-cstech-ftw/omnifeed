@@ -300,7 +300,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   }
 
   void _attachSingleTikTokHost(String handle) {
-    if (kIsWeb) return; // Guard for web builds
+    if (kIsWeb) return;
 
     final cleanHandle = handle.replaceAll('@', '').trim();
     if (_ttHosts.contains(cleanHandle)) return;
@@ -371,6 +371,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
   Future<String?> _resolveHandleFromTikTokUserId(String userId) async {
     if (kIsWeb) return null;
+
     try {
       final url = Uri.parse(
         'https://webcast.tiktok.com/webcast/user/profile/?user_id=$userId&aid=1988',
@@ -397,11 +398,13 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         }
       }
     } catch (_) {}
+
     return null;
   }
 
   Future<void> _probeActiveCoHosts(String primaryHandle) async {
     if (kIsWeb) return;
+
     final clean = primaryHandle.replaceAll('@', '').trim();
 
     try {
@@ -491,13 +494,13 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   void _connectStreams() {
     _disconnectAll();
 
-    // 1. TikTok Ingestion (Safely guarded for web builds)
+    // 1. TikTok Ingestion
     if (_enabled['TT']!) {
       if (kIsWeb) {
         _addEvent(StreamMessage(
           platform: 'SYS',
           user: 'System',
-          text: 'TikTok direct live socket connection is not supported in web browser builds.',
+          text: 'TikTok direct connection unsupported on web (browser socket restriction). Native Android APK works as intended.',
           badgeBg: Colors.orange,
         ));
       } else {
@@ -512,9 +515,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               _ttHosts.insert(0, prim);
             }
           }
-        }
-
-        if (prim.isNotEmpty) {
           _probeActiveCoHosts(prim);
         }
 
@@ -606,7 +606,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       }
     }
 
-    // 2. Twitch Ingestion (Web-compatible WebSocket)
+    // 2. Twitch Ingestion
     if (_enabled['TW']!) {
       final user = _twInput.text.trim().toLowerCase();
       if (user.isNotEmpty) {
@@ -650,7 +650,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       }
     }
 
-    // 3. Kick Ingestion (Web-compatible WebSocket)
+    // 3. Kick Ingestion
     if (_enabled['KC']!) {
       final kickSlug = _kcInput.text.trim().toLowerCase();
       if (kickSlug.isNotEmpty) {
@@ -658,7 +658,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       }
     }
 
-    // 4. YouTube Ingestion (Web-compatible HTTP Polling)
+    // 4. YouTube Ingestion
     if (_enabled['YT']!) {
       final ytId = _ytInput.text.trim();
       if (ytId.isNotEmpty) {
