@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:http/http.dart' as http;
-import 'package:piratetok_live/piratetok_live.dart';
+import 'tiktok_bridge.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
