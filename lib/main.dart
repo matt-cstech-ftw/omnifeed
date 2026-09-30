@@ -382,7 +382,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
   void _connectTikTokWebRelay(String handle) {
     final cleanHandle = handle.replaceAll('@', '').trim();
-    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com');
+    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws');
 
     _addEvent(StreamMessage(
       platform: 'SYS',
