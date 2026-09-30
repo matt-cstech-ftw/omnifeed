@@ -84965,7 +84965,7 @@ if(q!=null)q.gjS().aR(0)}catch(n){}k.go=null
 q=k.id
 if(q!=null)q.b4()
 k.id=null},
-a5C(a){var s,r,q,p,o=this,n=null,m=B.c.hg(A.iW(a,"@","")),l=A.eK("wss://omnifeed-relay.onrender.com")
+a5C(a){var s,r,q,p,o=this,n=null,m=B.c.hg(A.iW(a,"@","")),l=A.eK("wss://omnifeed-relay.onrender.com/ws")
 o.jY(new A.eI("SYS","System","Connecting to Cloud Relay for @"+A.j(m)+"...",B.bU,n))
 try{s=A.at9(A.HS(l,n))
 o.fx.push(s)
