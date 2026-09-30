@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -382,18 +382,21 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
   void _connectTikTokWebRelay(String handle) {
     final cleanHandle = handle.replaceAll('@', '').trim();
-    final bridgeUri = Uri.parse('wss://omnifeed-tiktok-bridge.m-malishefski.workers.dev/?handle=$cleanHandle');
+    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com');
 
     _addEvent(StreamMessage(
       platform: 'SYS',
       user: 'System',
-      text: 'Connecting via Cloudflare Edge to @$cleanHandle...',
+      text: 'Connecting to Cloud Relay for @$cleanHandle...',
       badgeBg: const Color(0xFF00E5FF),
     ));
 
     try {
       final channel = WebSocketChannel.connect(bridgeUri);
       _ttWebChannels.add(channel);
+
+      // Instruct cloud relay to attach to this TikTok streamer
+      channel.sink.add(jsonEncode({'action': 'connect', 'handle': cleanHandle}));
 
       channel.stream.listen((raw) {
         final data = jsonDecode(raw.toString());
@@ -440,7 +443,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         _addEvent(StreamMessage(
           platform: 'SYS',
           user: 'Error',
-          text: 'TT Relay error: $err',
+          text: 'Relay connection error: $err',
           badgeBg: Colors.redAccent,
         ));
       });
@@ -448,7 +451,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       _addEvent(StreamMessage(
         platform: 'SYS',
         user: 'Error',
-        text: 'TT Connection failed: $e',
+        text: 'Connection failed: $e',
         badgeBg: Colors.redAccent,
       ));
     }
