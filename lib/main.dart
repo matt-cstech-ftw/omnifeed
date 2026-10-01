@@ -92,17 +92,25 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     'YT': const Color(0xFFFF0000),
   };
 
+  // Co-host custom colors & distinct palette
   final Map<String, Color> _hostColors = {};
   final List<Color> _hostPalette = [
-    const Color(0xFF00E5FF), // Cyan
-    const Color(0xFFFF4081), // Neon Pink
-    const Color(0xFFFFD600), // Amber Gold
-    const Color(0xFF7C4DFF), // Purple
-    const Color(0xFF00E676), // Lime Green
-    const Color(0xFFFF6E40), // Coral
-    const Color(0xFF40C4FF), // Sky Blue
-    const Color(0xFFE040FB), // Magenta
+    const Color(0xFF00E5FF),
+    const Color(0xFFFF4081),
+    const Color(0xFFFFD600),
+    const Color(0xFF7C4DFF),
+    const Color(0xFF00E676),
+    const Color(0xFFFF6E40),
+    const Color(0xFF40C4FF),
+    const Color(0xFFE040FB),
   ];
+
+  // Chat Appearance Customization
+  double _chatFontSize = 11.0;
+  Color _chatTextColor = Colors.white;
+  Color _chatUserColor = Colors.white;
+  final Color _defaultChatTextColor = Colors.white;
+  final Color _defaultChatUserColor = Colors.white;
 
   final List<StreamMessage> _chat = [];
   final List<StreamMessage> _events = [];
@@ -417,6 +425,160 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showChatAppearanceModal() {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (c, setDState) => AlertDialog(
+          backgroundColor: const Color(0xFF16161D),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: const Row(
+            children: [
+              Icon(Icons.format_size_rounded, color: Color(0xFF00E5FF), size: 20),
+              SizedBox(width: 8),
+              Text('Chat Appearance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Font Size:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text('${_chatFontSize.toInt()} pt', style: const TextStyle(fontSize: 12, color: Color(0xFF00E5FF))),
+                  ],
+                ),
+                Slider(
+                  value: _chatFontSize,
+                  min: 9.0,
+                  max: 22.0,
+                  divisions: 13,
+                  label: '${_chatFontSize.toInt()} pt',
+                  activeColor: const Color(0xFF00E5FF),
+                  onChanged: (v) {
+                    setState(() => _chatFontSize = v);
+                    setDState(() {});
+                  },
+                ),
+                const Divider(height: 20),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Chat Text Color', style: TextStyle(fontSize: 12)),
+                  trailing: InkWell(
+                    onTap: () {
+                      Color pick = _chatTextColor;
+                      showDialog(
+                        context: context,
+                        builder: (subCtx) => AlertDialog(
+                          title: const Text('Text Color'),
+                          content: SingleChildScrollView(
+                            child: ColorPicker(
+                              pickerColor: pick,
+                              onColorChanged: (cl) => pick = cl,
+                              enableAlpha: false,
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                setState(() => _chatTextColor = _defaultChatTextColor);
+                                setDState(() {});
+                                Navigator.pop(subCtx);
+                              },
+                              child: const Text('Default White'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                setState(() => _chatTextColor = pick);
+                                setDState(() {});
+                                Navigator.pop(subCtx);
+                              },
+                              child: const Text('Apply'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: _chatTextColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white54, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Username Color', style: TextStyle(fontSize: 12)),
+                  trailing: InkWell(
+                    onTap: () {
+                      Color pick = _chatUserColor;
+                      showDialog(
+                        context: context,
+                        builder: (subCtx) => AlertDialog(
+                          title: const Text('Username Color'),
+                          content: SingleChildScrollView(
+                            child: ColorPicker(
+                              pickerColor: pick,
+                              onColorChanged: (cl) => pick = cl,
+                              enableAlpha: false,
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                setState(() => _chatUserColor = _defaultChatUserColor);
+                                setDState(() {});
+                                Navigator.pop(subCtx);
+                              },
+                              child: const Text('Default White'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                setState(() => _chatUserColor = pick);
+                                setDState(() {});
+                                Navigator.pop(subCtx);
+                              },
+                              child: const Text('Apply'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: _chatUserColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white54, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
       ),
     );
@@ -1160,9 +1322,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             '2. Enter streamer handles or YouTube Live IDs.\n'
             '3. Tap the +0 badge under TikTok to manage active co-hosts and pick distinct colors.\n'
             '4. Automatic prompts appear when rival co-hosts are active.\n'
-            '5. Works seamlessly in both landscape (3 panes) and portrait (focused chat + tabs).\n'
-            '6. Hit CONNECT to aggregate chats in real-time.\n'
-            '7. Passphrase key can be updated in Settings.',
+            '5. Use the "A" icon in the header to resize chat text and customize font/username colors.\n'
+            '6. Works seamlessly in both landscape (3 panes) and portrait (focused chat + tabs).\n'
+            '7. Hit CONNECT to aggregate chats in real-time.',
             style: TextStyle(fontSize: 12),
           ),
         ),
@@ -1299,7 +1461,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                             child: Text(
                               '@${msg.host}',
                               style: TextStyle(
-                                fontSize: 9,
+                                fontSize: (_chatFontSize - 2).clamp(8.0, 18.0),
                                 color: hostColor,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -1308,8 +1470,23 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                         }),
                       ],
                       const SizedBox(width: 6),
-                      Text('${msg.user}: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                      Expanded(child: SelectableText(msg.text, style: const TextStyle(fontSize: 11))),
+                      Text(
+                        '${msg.user}: ',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: _chatFontSize,
+                          color: _chatUserColor,
+                        ),
+                      ),
+                      Expanded(
+                        child: SelectableText(
+                          msg.text,
+                          style: TextStyle(
+                            fontSize: _chatFontSize,
+                            color: _chatTextColor,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -1450,9 +1627,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   onPressed: _showSupportModal,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.key_outlined, size: 18, color: Color(0xFF00E5FF)),
-                  tooltip: 'Change Passphrase',
-                  onPressed: _showAuthPrompt,
+                  icon: const Icon(Icons.format_size_rounded, size: 18, color: Color(0xFF00E5FF)),
+                  tooltip: 'Chat Appearance',
+                  onPressed: _showChatAppearanceModal,
                 ),
                 IconButton(
                   icon: const Icon(Icons.color_lens_outlined, size: 18, color: Colors.grey),
@@ -1460,6 +1637,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   onPressed: () => setState(() {
                     _colors.addAll(_factoryColors);
                     _hostColors.clear();
+                    _chatTextColor = _defaultChatTextColor;
+                    _chatUserColor = _defaultChatUserColor;
+                    _chatFontSize = 11.0;
                   }),
                 ),
                 const VerticalDivider(width: 16, indent: 12, endIndent: 12),
@@ -1530,9 +1710,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: const Icon(Icons.key_outlined, size: 18, color: Color(0xFF00E5FF)),
-                tooltip: 'Change Passphrase',
-                onPressed: _showAuthPrompt,
+                icon: const Icon(Icons.format_size_rounded, size: 18, color: Color(0xFF00E5FF)),
+                tooltip: 'Chat Appearance',
+                onPressed: _showChatAppearanceModal,
               ),
               const SizedBox(width: 6),
               IconButton(
@@ -1543,6 +1723,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                 onPressed: () => setState(() {
                   _colors.addAll(_factoryColors);
                   _hostColors.clear();
+                  _chatTextColor = _defaultChatTextColor;
+                  _chatUserColor = _defaultChatUserColor;
+                  _chatFontSize = 11.0;
                 }),
               ),
             ],
