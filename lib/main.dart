@@ -92,6 +92,18 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     'YT': const Color(0xFFFF0000),
   };
 
+  final Map<String, Color> _hostColors = {};
+  final List<Color> _hostPalette = [
+    const Color(0xFF00E5FF), // Cyan
+    const Color(0xFFFF4081), // Neon Pink
+    const Color(0xFFFFD600), // Amber Gold
+    const Color(0xFF7C4DFF), // Purple
+    const Color(0xFF00E676), // Lime Green
+    const Color(0xFFFF6E40), // Coral
+    const Color(0xFF40C4FF), // Sky Blue
+    const Color(0xFFE040FB), // Magenta
+  ];
+
   final List<StreamMessage> _chat = [];
   final List<StreamMessage> _events = [];
   final List<String> _ttHosts = [];
@@ -155,6 +167,16 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     _kcInput.dispose();
     _ytInput.dispose();
     super.dispose();
+  }
+
+  Color _getColorForHost(String? host) {
+    if (host == null || host.isEmpty) return const Color(0xFF00E5FF);
+    final key = host.toLowerCase().replaceAll('@', '').trim();
+    if (!_hostColors.containsKey(key)) {
+      final next = _hostPalette[_hostColors.length % _hostPalette.length];
+      _hostColors[key] = next;
+    }
+    return _hostColors[key]!;
   }
 
   Future<void> _loadAuthKey() async {
@@ -248,7 +270,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top preview window header
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: const BoxDecoration(
@@ -300,8 +321,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                       style: TextStyle(fontSize: 12, color: Color(0xFF4B5563), height: 1.35),
                     ),
                     const SizedBox(height: 18),
-
-                    // PayPal Primary Button
                     SizedBox(
                       width: double.infinity,
                       height: 44,
@@ -341,8 +360,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                       ),
                     ),
                     const SizedBox(height: 8),
-
-                    // Venmo Option Button
                     SizedBox(
                       width: double.infinity,
                       height: 44,
@@ -377,8 +394,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                       ),
                     ),
                     const SizedBox(height: 8),
-
-                    // Debit or Credit Card Button
                     SizedBox(
                       width: double.infinity,
                       height: 44,
@@ -464,6 +479,47 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           ElevatedButton(
             onPressed: () {
               setState(() => _colors[platformKey] = pickerColor);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openHostColorPicker(String handle, VoidCallback onUpdate) {
+    final clean = handle.toLowerCase().replaceAll('@', '').trim();
+    Color pickerColor = _getColorForHost(clean);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('@$clean Badge Color'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: pickerColor,
+            onColorChanged: (c) => pickerColor = c,
+            paletteType: PaletteType.hsvWithHue,
+            enableAlpha: false,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _hostColors.remove(clean);
+              });
+              onUpdate();
+              Navigator.pop(ctx);
+            },
+            child: const Text('Reset Default'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _hostColors[clean] = pickerColor;
+              });
+              onUpdate();
               Navigator.pop(ctx);
             },
             child: const Text('Apply'),
@@ -570,6 +626,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
     setState(() {
       _ttHosts.add(cleanHandle);
+      _getColorForHost(cleanHandle);
     });
 
     if (kIsWeb) {
@@ -724,128 +781,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     }
   }
 
-  Future<String?> _resolveHandleFromTikTokUserId(String userId) async {
-    if (kIsWeb) return null;
-
-    try {
-      final url = Uri.parse(
-        'https://webcast.tiktok.com/webcast/user/profile/?user_id=$userId&aid=1988',
-      );
-      final resp = await http.get(url, headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-      }).timeout(const Duration(seconds: 4));
-
-      if (resp.statusCode == 200 && resp.body.trim().isNotEmpty) {
-        final parsed = jsonDecode(resp.body);
-        final userObj = parsed['data']?['user'] ?? parsed['user'];
-        if (userObj is Map) {
-          final h = (userObj['display_id'] ?? userObj['unique_id'] ?? userObj['uniqueId'])?.toString();
-          if (h != null && h.isNotEmpty && !h.contains(RegExp(r'^\d+$'))) {
-            return h;
-          }
-        }
-        final match = RegExp(r'"(?:display_id|unique_id|uniqueId)":\s*"([^"]+)"').firstMatch(resp.body);
-        if (match != null && match.group(1) != null) {
-          final candidate = match.group(1)!;
-          if (!candidate.contains(RegExp(r'^\d+$'))) return candidate;
-        }
-      }
-    } catch (_) {}
-
-    return null;
-  }
-
-  Future<void> _probeActiveCoHosts(String primaryHandle) async {
-    if (kIsWeb) return;
-
-    final clean = primaryHandle.replaceAll('@', '').trim();
-
-    try {
-      final res = await checkOnline(clean);
-      final roomId = res.roomId;
-      if (roomId == null || roomId.isEmpty) return;
-
-      final url = Uri.parse(
-        'https://webcast.tiktok.com/webcast/room/info/?room_id=$roomId&aid=1988',
-      );
-      final resp = await http.get(url, headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-      }).timeout(const Duration(seconds: 5));
-
-      if (resp.statusCode == 200 && resp.body.trim().isNotEmpty) {
-        final parsed = jsonDecode(resp.body);
-        final candidates = <String>[];
-        final cleanLower = clean.toLowerCase();
-
-        if (parsed is Map<String, dynamic>) {
-          final data = parsed['data'] is Map<String, dynamic>
-              ? parsed['data'] as Map<String, dynamic>
-              : parsed;
-
-          final ownerId = (data['owner']?['id'] ?? data['owner_user_id'])?.toString();
-          final linkMic = data['link_mic'] ?? data['linkMic'];
-          final battleScores = linkMic is Map ? (linkMic['battle_scores'] ?? linkMic['battleScores']) : null;
-
-          final rivalUserIds = <String>[];
-          if (battleScores is List) {
-            for (final scoreEntry in battleScores) {
-              if (scoreEntry is Map) {
-                final uId = (scoreEntry['user_id'] ?? scoreEntry['userId'])?.toString();
-                if (uId != null && uId.isNotEmpty && uId != ownerId) {
-                  rivalUserIds.add(uId);
-                }
-              }
-            }
-          }
-
-          for (final rivalId in rivalUserIds) {
-            String? handle;
-            final idx = resp.body.indexOf(rivalId);
-            if (idx != -1) {
-              final start = (idx - 1200).clamp(0, resp.body.length);
-              final end = (idx + 1200).clamp(0, resp.body.length);
-              final slice = resp.body.substring(start, end);
-
-              final matches = RegExp(r'"(?:display_id|displayId|unique_id|uniqueId)":\s*"([^"]+)"')
-                  .allMatches(slice);
-              for (final m in matches) {
-                final c = m.group(1);
-                if (c != null && c.isNotEmpty && !c.contains(RegExp(r'^\d+$')) && c.toLowerCase() != cleanLower) {
-                  handle = c;
-                  break;
-                }
-              }
-            }
-
-            if (handle == null) {
-              handle = await _resolveHandleFromTikTokUserId(rivalId);
-            }
-
-            if (handle != null &&
-                handle.toLowerCase() != cleanLower &&
-                !candidates.map((c) => c.toLowerCase()).contains(handle.toLowerCase()) &&
-                !_ttHosts.map((t) => t.toLowerCase()).contains(handle.toLowerCase())) {
-              candidates.add(handle);
-            }
-          }
-
-          for (final handle in candidates) {
-            if (!_promptedHosts.contains(handle.toLowerCase())) {
-              _promptedHosts.add(handle.toLowerCase());
-              if (mounted) {
-                _showCoHostPrompt(handle);
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
   void _connectStreams() {
     _disconnectAll();
 
@@ -862,6 +797,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             _ttHosts.insert(0, prim);
           }
         }
+        _getColorForHost(prim);
       }
 
       if (kIsWeb) {
@@ -869,10 +805,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           _connectTikTokWebRelay(handle);
         }
       } else {
-        if (prim.isNotEmpty) {
-          _probeActiveCoHosts(prim);
-        }
-
         for (final handle in _ttHosts) {
           runZonedGuarded(() async {
             final client = TikTokLiveClient(handle);
@@ -1133,7 +1065,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: SizedBox(
-              height: 280,
+              height: 320,
               child: Column(
                 children: [
                   Row(
@@ -1156,7 +1088,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                         onPressed: () {
                           final val = entry.text.trim().replaceAll('@', '');
                           if (val.isNotEmpty && !_ttHosts.contains(val)) {
-                            setState(() => _ttHosts.add(val));
+                            setState(() {
+                              _ttHosts.add(val);
+                              _getColorForHost(val);
+                            });
                             setMState(() {});
                             entry.clear();
                           }
@@ -1168,17 +1103,41 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   Expanded(
                     child: ListView.builder(
                       itemCount: _ttHosts.length,
-                      itemBuilder: (c, idx) => ListTile(
-                        dense: true,
-                        title: Text('@${_ttHosts[idx]}', style: const TextStyle(fontSize: 13)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
-                          onPressed: () {
-                            setState(() => _ttHosts.removeAt(idx));
-                            setMState(() {});
-                          },
-                        ),
-                      ),
+                      itemBuilder: (c, idx) {
+                        final hostHandle = _ttHosts[idx];
+                        final hostColor = _getColorForHost(hostHandle);
+                        return ListTile(
+                          dense: true,
+                          leading: InkWell(
+                            onTap: () {
+                              _openHostColorPicker(hostHandle, () {
+                                setMState(() {});
+                              });
+                            },
+                            child: Tooltip(
+                              message: 'Change Badge Color',
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: hostColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white60, width: 1.5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          title: Text('@$hostHandle', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Tap color circle to customize', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
+                            onPressed: () {
+                              setState(() => _ttHosts.removeAt(idx));
+                              setMState(() {});
+                            },
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -1199,7 +1158,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           child: Text(
             '1. Toggle platforms on top to show input boxes.\n'
             '2. Enter streamer handles or YouTube Live IDs.\n'
-            '3. Tap the +0 badge under TikTok to manage active co-hosts manually.\n'
+            '3. Tap the +0 badge under TikTok to manage active co-hosts and pick distinct colors.\n'
             '4. Automatic prompts appear when rival co-hosts are active.\n'
             '5. Works seamlessly in both landscape (3 panes) and portrait (focused chat + tabs).\n'
             '6. Hit CONNECT to aggregate chats in real-time.\n'
@@ -1328,11 +1287,25 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                       _buildBadge(msg.platform, msg.badgeBg),
                       if (msg.host != null) ...[
                         const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(color: const Color(0xFF102A38), borderRadius: BorderRadius.circular(3)),
-                          child: Text('@${msg.host}', style: const TextStyle(fontSize: 9, color: Color(0xFF80DEEA), fontWeight: FontWeight.bold)),
-                        ),
+                        Builder(builder: (ctx) {
+                          final hostColor = _getColorForHost(msg.host);
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: hostColor.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(3),
+                              border: Border.all(color: hostColor.withValues(alpha: 0.7), width: 0.9),
+                            ),
+                            child: Text(
+                              '@${msg.host}',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: hostColor,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          );
+                        }),
                       ],
                       const SizedBox(width: 6),
                       Text('${msg.user}: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
@@ -1484,7 +1457,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                 IconButton(
                   icon: const Icon(Icons.color_lens_outlined, size: 18, color: Colors.grey),
                   tooltip: 'Reset Colors',
-                  onPressed: () => setState(() => _colors.addAll(_factoryColors)),
+                  onPressed: () => setState(() {
+                    _colors.addAll(_factoryColors);
+                    _hostColors.clear();
+                  }),
                 ),
                 const VerticalDivider(width: 16, indent: 12, endIndent: 12),
                 ..._buildInputsList(),
@@ -1564,7 +1540,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                 constraints: const BoxConstraints(),
                 icon: const Icon(Icons.color_lens_outlined, size: 18, color: Colors.grey),
                 tooltip: 'Reset Colors',
-                onPressed: () => setState(() => _colors.addAll(_factoryColors)),
+                onPressed: () => setState(() {
+                  _colors.addAll(_factoryColors);
+                  _hostColors.clear();
+                }),
               ),
             ],
           ),
