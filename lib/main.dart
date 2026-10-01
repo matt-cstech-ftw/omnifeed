@@ -223,49 +223,186 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
+  Future<void> _launchDonationUrl() async {
+    final uri = Uri.parse('https://www.paypal.com/donate/?hosted_button_id=E5ZY9CWMAV9Z6');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   void _showSupportModal() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        title: const Row(
-          children: [
-            Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 20),
-            SizedBox(width: 8),
-            Text('Support OmniFeed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'OmniFeed is maintained independently. Tips cover server relay container costs and continuous feature updates.',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
-            ),
-            const SizedBox(height: 14),
-            ListTile(
-              dense: true,
-              tileColor: const Color(0xFF22222B),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-              leading: const Icon(Icons.payment, color: Color(0xFF00E5FF)),
-              title: const Text('Tip via PayPal', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-              subtitle: const Text('paypal.me/mmalishefski', style: TextStyle(fontSize: 11, color: Colors.grey)),
-              onTap: () async {
-                final uri = Uri.parse('https://paypal.me/mmalishefski');
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: Colors.grey)),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Container(
+          width: 380,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(color: Colors.black54, blurRadius: 24, spreadRadius: 4),
+            ],
           ),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Top preview window header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF5F7FA),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+                ),
+                child: Row(
+                  children: [
+                    const Row(
+                      children: [
+                        CircleAvatar(radius: 4.5, backgroundColor: Color(0xFFE2E8F0)),
+                        SizedBox(width: 5),
+                        CircleAvatar(radius: 4.5, backgroundColor: Color(0xFFE2E8F0)),
+                        SizedBox(width: 5),
+                        CircleAvatar(radius: 4.5, backgroundColor: Color(0xFFE2E8F0)),
+                      ],
+                    ),
+                    const Spacer(),
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx),
+                      child: const Icon(Icons.close, color: Colors.grey, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Donate to',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Matt | CS Tech Solutions',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Empower progress by supporting our online community tool development.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Color(0xFF4B5563), height: 1.35),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // PayPal Primary Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFC439),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _launchDonationUrl();
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            RichText(
+                              text: const TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: 'Pay',
+                                    style: TextStyle(color: Color(0xFF003087), fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, fontSize: 16),
+                                  ),
+                                  TextSpan(
+                                    text: 'Pal ',
+                                    style: TextStyle(color: Color(0xFF0079C1), fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Text(
+                              'Donate',
+                              style: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w700, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Venmo Option Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF008CFF),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _launchDonationUrl();
+                        },
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'venmo ',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontStyle: FontStyle.italic,
+                                fontSize: 15,
+                              ),
+                            ),
+                            Text(
+                              'Donate',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Debit or Credit Card Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF003087), width: 1.4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _launchDonationUrl();
+                        },
+                        child: const Text(
+                          'Donate with Debit or Credit Card',
+                          style: TextStyle(color: Color(0xFF003087), fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -551,6 +688,16 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             badgeBg: const Color(0xFFFE2C55),
             host: data['host'],
           ));
+        } else if (event == 'cohost_detected') {
+          final cohost = data['handle']?.toString() ?? '';
+          if (cohost.isNotEmpty &&
+              !_ttHosts.map((h) => h.toLowerCase()).contains(cohost.toLowerCase()) &&
+              !_promptedHosts.contains(cohost.toLowerCase())) {
+            _promptedHosts.add(cohost.toLowerCase());
+            if (mounted) {
+              _showCoHostPrompt(cohost);
+            }
+          }
         } else if (event == 'error') {
           _addEvent(StreamMessage(
             platform: 'SYS',
