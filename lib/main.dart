@@ -428,6 +428,125 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.menu_book_rounded, color: Color(0xFF00E5FF), size: 22),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'OmniFeed Manual',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHelpStep(
+                step: '1',
+                title: 'Select Ingestion Feeds',
+                description: 'Toggle the platform pills at the top to display handle input fields for TikTok, Twitch, Kick, and YouTube.',
+              ),
+              const SizedBox(height: 10),
+              _buildHelpStep(
+                step: '2',
+                title: 'Enter Handles / IDs',
+                description: 'Input your creator usernames or YouTube Live Video IDs.',
+              ),
+              const SizedBox(height: 10),
+              _buildHelpStep(
+                step: '3',
+                title: 'Manage Active Co-Hosts',
+                description: 'Tap the +0 group badge under TikTok to view co-hosts and customize individual neon accent colors.',
+              ),
+              const SizedBox(height: 10),
+              _buildHelpStep(
+                step: '4',
+                title: 'Automatic Co-Host / Battle Detection',
+                description: 'When linked anchors join a box or battle, an instant prompt allows you to merge their chat with a single tap.',
+              ),
+              const SizedBox(height: 10),
+              _buildHelpStep(
+                step: '5',
+                title: 'Customize Chat Appearance',
+                description: 'Tap the text icon (tT) in the top toolbar to adjust chat font sizing and set custom colors for messages and usernames.',
+              ),
+              const SizedBox(height: 10),
+              _buildHelpStep(
+                step: '6',
+                title: 'Landscape & Portrait Responsive',
+                description: 'Operates in 3 split panes in landscape, or a focused vertical feed with tabbed bottom panels in portrait.',
+              ),
+              const SizedBox(height: 10),
+              _buildHelpStep(
+                step: '7',
+                title: 'Go Live',
+                description: 'Tap CONNECT to aggregate live chats, subscriber badges, alerts, and diamonds simultaneously.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpStep({required String step, required String title, required String description}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: const Color(0xFF00E5FF), width: 1),
+          ),
+          child: Text(
+            step,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF00E5FF)),
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 2),
+              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showAboutOmniFeedModal() {
     showDialog(
       context: context,
@@ -1423,30 +1542,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
-  void _showHelpDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('OmniFeed Manual', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const SingleChildScrollView(
-          child: Text(
-            '1. Toggle platforms on top to show input boxes.\n'
-            '2. Enter streamer handles or YouTube Live IDs.\n'
-            '3. Tap the +0 badge under TikTok to manage active co-hosts and pick distinct colors.\n'
-            '4. Automatic prompts appear when rival co-hosts are active.\n'
-            '5. Use the "A" icon in the header to resize chat text and customize font/username colors.\n'
-            '6. Works seamlessly in both landscape (3 panes) and portrait (focused chat + tabs).\n'
-            '7. Hit CONNECT to aggregate chats in real-time.',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
-        actions: [
-          ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBrandLogo() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1780,7 +1875,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                 ),
                 IconButton(
                   icon: const Icon(Icons.format_size_rounded, size: 18, color: Color(0xFF00E5FF)),
-                  tooltip: 'Chat Appearance',
+                  tooltip: 'Chat Appearance (Text Size & Color)',
                   onPressed: _showChatAppearanceModal,
                 ),
                 IconButton(
@@ -1863,7 +1958,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 icon: const Icon(Icons.format_size_rounded, size: 18, color: Color(0xFF00E5FF)),
-                tooltip: 'Chat Appearance',
+                tooltip: 'Chat Appearance (Text Size & Color)',
                 onPressed: _showChatAppearanceModal,
               ),
               const SizedBox(width: 6),
