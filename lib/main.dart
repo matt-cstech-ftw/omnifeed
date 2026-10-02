@@ -296,6 +296,14 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               Navigator.pop(ctx);
               if (key.isNotEmpty) {
                 await _fetchAndShowAdminStats(key);
+              } else {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
               }
             },
             child: const Text('Authenticate', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -318,13 +326,19 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Access Denied: Invalid Admin Key'), backgroundColor: Colors.redAccent),
+          const SnackBar(
+            content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connection failed: $e'), backgroundColor: Colors.redAccent),
+        const SnackBar(
+          content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.redAccent,
+        ),
       );
     }
   }
