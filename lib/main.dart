@@ -92,7 +92,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     'YT': const Color(0xFFFF0000),
   };
 
-  // Co-host custom colors & distinct palette
   final Map<String, Color> _hostColors = {};
   final List<Color> _hostPalette = [
     const Color(0xFF00E5FF),
@@ -105,7 +104,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     const Color(0xFFE040FB),
   ];
 
-  // Chat Appearance Customization
   double _chatFontSize = 11.0;
   Color _chatTextColor = Colors.white;
   Color _chatUserColor = Colors.white;
@@ -427,6 +425,120 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           ),
         ),
       ),
+    );
+  }
+
+  void _showAboutOmniFeedModal() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.hub_rounded, color: Color(0xFF00E5FF), size: 22),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'What is OmniFeed?',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'OmniFeed is a unified, real-time live stream HUD built for content creators and streamers.',
+                style: TextStyle(fontSize: 13, height: 1.4, color: Colors.white),
+              ),
+              const SizedBox(height: 12),
+              _buildAboutPoint(
+                icon: Icons.alt_route_rounded,
+                title: 'Multi-Platform Aggregation',
+                description: 'Combines chats and viewer interactions from TikTok, Twitch, Kick, and YouTube into one seamless, unified stream view.',
+              ),
+              const SizedBox(height: 10),
+              _buildAboutPoint(
+                icon: Icons.group_add_rounded,
+                title: 'TikTok Co-Host & Battle Detection',
+                description: 'Automatically detects rival anchors and co-hosts during TikTok Live sessions, allowing you to merge their live feeds with custom color coding.',
+              ),
+              const SizedBox(height: 10),
+              _buildAboutPoint(
+                icon: Icons.devices_rounded,
+                title: 'Second-Screen HUD',
+                description: 'Designed to run cleanly on a phone, tablet, or secondary monitor so you can easily read chat, moderate, and engage without cluttering your main broadcast display.',
+              ),
+              const SizedBox(height: 10),
+              _buildAboutPoint(
+                icon: Icons.card_giftcard_rounded,
+                title: 'Live Alerts, Gifts & Session Stats',
+                description: 'Tracks gifts, diamond values, top session supporters, and system connection events in dedicated real-time panels.',
+              ),
+              const Divider(height: 24, color: Color(0xFF2A2A38)),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E28),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Enjoying the tool? Tap the heart icon in the toolbar to support ongoing development!',
+                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got It', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutPoint({required IconData icon, required String title, required String description}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: const Color(0xFF00E5FF), size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 2),
+              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1372,6 +1484,44 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
+  Widget _buildWhatIsOmniFeedBadge() {
+    return InkWell(
+      onTap: _showAboutOmniFeedModal,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E2230),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF00E5FF), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF00E5FF).withValues(alpha: 0.22),
+              blurRadius: 8,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.help_outline_rounded, size: 15, color: Color(0xFF00E5FF)),
+            SizedBox(width: 5),
+            Text(
+              'What is OmniFeed?',
+              style: TextStyle(
+                fontSize: 11,
+                color: Color(0xFF00E5FF),
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEventsPane() {
     return Container(
       padding: const EdgeInsets.all(8),
@@ -1595,6 +1745,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         onPressed: _showHelpDialog,
         child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
       ),
+      const SizedBox(width: 8),
+      _buildWhatIsOmniFeedBadge(),
     ];
   }
 
