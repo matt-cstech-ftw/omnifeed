@@ -130,8 +130,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   bool _canScrollRight = false;
   int _portraitTabIndex = 0;
 
-  final List<TikTokLiveClient> _ttClients = [];
-  final List<WebSocketChannel> _ttWebChannels = [];
+  final Map<String, TikTokLiveClient> _ttClientsMap = {};
+  final Map<String, WebSocketChannel> _ttWebChannelsMap = {};
   WebSocketChannel? _twitchChannel;
   WebSocketChannel? _kickChannel;
   Timer? _ytTimer;
@@ -1139,20 +1139,35 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     _connectStreams();
   }
 
-  void _disconnectAll() {
-    for (final c in _ttClients) {
+  void _disconnectSingleHost(String handle) {
+    final clean = handle.toLowerCase().replaceAll('@', '').trim();
+    if (kIsWeb) {
+      final ch = _ttWebChannelsMap.remove(clean);
       try {
-        c.disconnect();
+        ch?.sink.close();
+      } catch (_) {}
+    } else {
+      final cl = _ttClientsMap.remove(clean);
+      try {
+        cl?.disconnect();
       } catch (_) {}
     }
-    _ttClients.clear();
+  }
 
-    for (final ch in _ttWebChannels) {
+  void _disconnectAll() {
+    for (final cl in _ttClientsMap.values) {
+      try {
+        cl.disconnect();
+      } catch (_) {}
+    }
+    _ttClientsMap.clear();
+
+    for (final ch in _ttWebChannelsMap.values) {
       try {
         ch.sink.close();
       } catch (_) {}
     }
-    _ttWebChannels.clear();
+    _ttWebChannelsMap.clear();
     _promptedHosts.clear();
 
     try {
@@ -1220,7 +1235,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
     runZonedGuarded(() async {
       final client = TikTokLiveClient(cleanHandle);
-      _ttClients.add(client);
+      _ttClientsMap[cleanHandle.toLowerCase()] = client;
 
       client.on(EventType.connected, (evt) {
         _addEvent(StreamMessage(
@@ -1292,7 +1307,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
     try {
       final channel = WebSocketChannel.connect(bridgeUri);
-      _ttWebChannels.add(channel);
+      _ttWebChannelsMap[cleanHandle.toLowerCase()] = channel;
 
       channel.sink.add(jsonEncode({'action': 'connect', 'handle': cleanHandle}));
 
@@ -1392,7 +1407,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         for (final handle in _ttHosts) {
           runZonedGuarded(() async {
             final client = TikTokLiveClient(handle);
-            _ttClients.add(client);
+            _ttClientsMap[handle.toLowerCase()] = client;
 
             _addEvent(StreamMessage(
               platform: 'SYS',
@@ -1676,6 +1691,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                               _ttHosts.add(val);
                               _getColorForHost(val);
                             });
+                            if (_isConnected) {
+                              _attachSingleTikTokHost(val);
+                            }
                             setMState(() {});
                             entry.clear();
                           }
@@ -1716,7 +1734,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                           trailing: IconButton(
                             icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
                             onPressed: () {
-                              setState(() => _ttHosts.removeAt(idx));
+                              final removed = _ttHosts.removeAt(idx);
+                              _disconnectSingleHost(removed);
+                              setState(() {});
                               setMState(() {});
                             },
                           ),
