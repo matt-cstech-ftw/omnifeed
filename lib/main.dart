@@ -251,6 +251,157 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
+  void _showAdminKeyPrompt() {
+    final entry = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF00E5FF), size: 20),
+            SizedBox(width: 8),
+            Text('Relay Admin Gate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter admin authorization key to inspect live relay telemetry:',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: entry,
+              obscureText: true,
+              decoration: const InputDecoration(
+                hintText: 'Admin Key',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () async {
+              final key = entry.text.trim();
+              Navigator.pop(ctx);
+              if (key.isNotEmpty) {
+                await _fetchAndShowAdminStats(key);
+              }
+            },
+            child: const Text('Authenticate', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _fetchAndShowAdminStats(String adminKey) async {
+    final encoded = Uri.encodeComponent(adminKey);
+    final uri = Uri.parse('https://omnifeed-relay.onrender.com/stats?token=$encoded');
+
+    try {
+      final res = await http.get(uri);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (!mounted) return;
+        _displayAdminDashboard(data);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Access Denied: Invalid Admin Key'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection failed: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
+  void _displayAdminDashboard(Map<String, dynamic> data) {
+    final clients = data['concurrent_ws_clients'] ?? 0;
+    final streams = data['active_tiktok_streams'] ?? 0;
+    final cached = data['cached_user_ids'] ?? 0;
+    final handles = (data['tracked_handles'] as List? ?? []);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.analytics_outlined, color: Color(0xFF00E5FF), size: 20),
+            SizedBox(width: 8),
+            Text('Relay Live Telemetry', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStatRow('Active Web Clients:', '$clients'),
+              _buildStatRow('Active TikTok Streams:', '$streams'),
+              _buildStatRow('Cached User IDs:', '$cached'),
+              const Divider(height: 18, color: Color(0xFF2E2E3D)),
+              const Text('Active Host Streams:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(height: 6),
+              if (handles.isEmpty)
+                const Text('No active streams connected', style: TextStyle(fontSize: 11, color: Colors.white54))
+              else
+                ...handles.map((h) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('@$h', style: const TextStyle(fontSize: 12, color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
+                      const Text('Live Tracking', style: TextStyle(fontSize: 10, color: Colors.greenAccent)),
+                    ],
+                  ),
+                )),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF00E5FF))),
+        ],
+      ),
+    );
+  }
+
   Future<void> _launchDonationUrl() async {
     final uri = Uri.parse('https://www.paypal.com/donate/?hosted_button_id=E5ZY9CWMAV9Z6');
     if (await canLaunchUrl(uri)) {
@@ -1889,6 +2040,11 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                     _chatFontSize = 11.0;
                   }),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined, size: 18, color: Colors.white54),
+                  tooltip: 'Relay Administration',
+                  onPressed: _showAdminKeyPrompt,
+                ),
                 const VerticalDivider(width: 16, indent: 12, endIndent: 12),
                 ..._buildInputsList(),
               ],
@@ -1974,6 +2130,14 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   _chatUserColor = _defaultChatUserColor;
                   _chatFontSize = 11.0;
                 }),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.settings_outlined, size: 18, color: Colors.white54),
+                tooltip: 'Relay Administration',
+                onPressed: _showAdminKeyPrompt,
               ),
             ],
           ),
