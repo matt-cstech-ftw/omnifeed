@@ -290,13 +290,19 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           side: const BorderSide(color: Color(0xFFFE2C55), width: 1.2),
         ),
         title: const Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 22),
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Relay at Capacity',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                'OmniFeed is at capacity. Please try again shortly!',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  height: 1.25,
+                ),
               ),
             ),
           ],
@@ -306,11 +312,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'OmniFeed is currently at capacity. Please try again shortly!',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white, height: 1.3),
-              ),
-              const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -860,7 +861,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: CrossAxisAlignment.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
@@ -1912,7 +1913,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           ],
         ),
         child: const Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: minAxis,
           children: [
             Icon(Icons.help_outline_rounded, size: 15, color: Color(0xFF00E5FF)),
             SizedBox(width: 5),
@@ -1930,6 +1931,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       ),
     );
   }
+
+  static const MainAxisSize minAxis = MainAxisSize.min;
 
   Widget _buildEventsPane() {
     return Container(
