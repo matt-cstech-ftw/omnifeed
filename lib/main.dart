@@ -275,6 +275,93 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
+  void _showAtCapacityModal() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFFFE2C55), width: 1.2),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Relay at Capacity',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'OmniFeed is currently at capacity. Please try again shortly!',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white, height: 1.3),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF24151C),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.4), width: 1),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2.0),
+                      child: Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 16),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        "We're experiencing high demand! As an early-stage project, OmniFeed relies on community support to scale our infrastructure. Contributing financially directly supports server and development costs, but spreading the word is just as valuable in helping the tool grow.",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Dismiss', style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showSupportModal();
+            },
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.favorite, size: 14, color: Colors.white),
+                SizedBox(width: 5),
+                Text('Support Development', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAdminKeyPrompt() {
     final entry = TextEditingController();
     showDialog(
@@ -1355,6 +1442,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             }
           }
         } else if (event == 'error') {
+          if (data['code'] == 503 || data['message']?.toString().contains('capacity') == true) {
+            _showAtCapacityModal();
+          }
           _addEvent(StreamMessage(
             platform: 'SYS',
             user: 'Error',
@@ -1363,6 +1453,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           ));
         }
       }, onError: (err) {
+        final errStr = err.toString();
+        if (errStr.contains('503') || errStr.contains('capacity')) {
+          _showAtCapacityModal();
+        }
         _addEvent(StreamMessage(
           platform: 'SYS',
           user: 'Error',
@@ -1875,7 +1969,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: CrossAxisAlignment.spaceBetween,
             children: [
               const Text('UNIFIED CHAT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
               Row(
