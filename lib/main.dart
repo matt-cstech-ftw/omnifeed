@@ -1969,7 +1969,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: CrossAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('UNIFIED CHAT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
               Row(
