@@ -157,6 +157,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkHeaderOverflow();
       _loadAuthKey();
+      _loadSavedHandles();
     });
   }
 
@@ -193,6 +194,29 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     } else {
       _showAuthPrompt();
     }
+  }
+
+  Future<void> _loadSavedHandles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tt = prefs.getString('saved_handle_tt') ?? '';
+    final tw = prefs.getString('saved_handle_tw') ?? '';
+    final kc = prefs.getString('saved_handle_kc') ?? '';
+    final yt = prefs.getString('saved_handle_yt') ?? '';
+
+    setState(() {
+      if (tt.isNotEmpty) _ttPrimaryInput.text = tt;
+      if (tw.isNotEmpty) _twInput.text = tw;
+      if (kc.isNotEmpty) _kcInput.text = kc;
+      if (yt.isNotEmpty) _ytInput.text = yt;
+    });
+  }
+
+  Future<void> _saveHandles() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_handle_tt', _ttPrimaryInput.text.trim());
+    await prefs.setString('saved_handle_tw', _twInput.text.trim());
+    await prefs.setString('saved_handle_kc', _kcInput.text.trim());
+    await prefs.setString('saved_handle_yt', _ytInput.text.trim());
   }
 
   void _showAuthPrompt() {
@@ -740,7 +764,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: CrossAxisAlignment.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
@@ -1104,6 +1128,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       });
       return;
     }
+
+    _saveHandles();
 
     setState(() {
       _isConnected = true;
@@ -2102,7 +2128,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       color: const Color(0xFF141419),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: CommonAxis.horizontal == Axis.horizontal ? MainAxisAlignment.spaceBetween : MainAxisAlignment.start,
         children: [
           Row(
             children: [
