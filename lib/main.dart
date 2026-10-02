@@ -860,7 +860,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: CrossAxisAlignment.min,
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
