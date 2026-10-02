@@ -764,7 +764,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: CrossAxisAlignment.min,
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
@@ -2128,7 +2128,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       color: const Color(0xFF141419),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       child: Column(
-        mainAxisAlignment: CommonAxis.horizontal == Axis.horizontal ? MainAxisAlignment.spaceBetween : MainAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
