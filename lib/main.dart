@@ -861,7 +861,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: CrossAxisAlignment.min,
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
@@ -1913,7 +1913,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           ],
         ),
         child: const Row(
-          mainAxisSize: minAxis,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.help_outline_rounded, size: 15, color: Color(0xFF00E5FF)),
             SizedBox(width: 5),
@@ -1931,8 +1931,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       ),
     );
   }
-
-  static const MainAxisSize minAxis = MainAxisSize.min;
 
   Widget _buildEventsPane() {
     return Container(
