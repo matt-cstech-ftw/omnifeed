@@ -261,6 +261,11 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
             onPressed: () async {
               final val = entry.text.trim();
+              if (val == '#testcapacity') {
+                Navigator.pop(ctx);
+                _showAtCapacityModal();
+                return;
+              }
               if (val.isNotEmpty) {
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('omnifeed_access_key', val);
@@ -405,6 +410,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             onPressed: () async {
               final key = entry.text.trim();
               Navigator.pop(ctx);
+              if (key == '#testcapacity') {
+                _showAtCapacityModal();
+                return;
+              }
               if (key.isNotEmpty) {
                 await _fetchAndShowAdminStats(key);
               } else {
@@ -851,7 +860,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: CrossAxisAlignment.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
