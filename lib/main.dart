@@ -375,6 +375,60 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
+  void _showUpdatingModal() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16161D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.sync_rounded, color: Color(0xFF00E5FF), size: 22),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'System Update in Progress',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'OmniFeed is being updated, please wait a moment.',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Our relay is currently rebuilding with fresh optimizations. Service usually resumes automatically within 30 to 60 seconds.',
+              style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.35),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Okay', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAtCapacityModal() {
     showDialog(
       context: context,
@@ -512,6 +566,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               }
               if (key == '#testwelcome') {
                 _showWelcomeAgreementModal();
+                return;
+              }
+              if (key == '#testupdating') {
+                _showUpdatingModal();
                 return;
               }
               if (key.isNotEmpty) {
@@ -924,7 +982,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             children: [
               Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 2),
-              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
+              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.35)),
             ],
           ),
         ),
@@ -1552,6 +1610,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         } else if (event == 'error') {
           if (data['code'] == 503 || data['message']?.toString().contains('capacity') == true) {
             _showAtCapacityModal();
+          } else {
+            _showUpdatingModal();
           }
           _addEvent(StreamMessage(
             platform: 'SYS',
@@ -1564,6 +1624,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         final errStr = err.toString();
         if (errStr.contains('503') || errStr.contains('capacity')) {
           _showAtCapacityModal();
+        } else {
+          _showUpdatingModal();
         }
         _addEvent(StreamMessage(
           platform: 'SYS',
@@ -1573,6 +1635,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ));
       });
     } catch (e) {
+      _showUpdatingModal();
       _addEvent(StreamMessage(
         platform: 'SYS',
         user: 'Error',
