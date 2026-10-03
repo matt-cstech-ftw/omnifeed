@@ -168,6 +168,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     final key = host.toLowerCase().replaceAll('@', '').trim();
     if (!_hostColors.containsKey(key)) {
       final next = _hostPalette[_hostColors.length % _hostPalette.length];
+      _hostColors[key]!;
       _hostColors[key] = next;
     }
     return _hostColors[key]!;
@@ -2145,18 +2146,25 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         child: Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            width: isDesktop ? 160 : 130,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: const Color(0xFF232330),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: AnimatedRotation(
-              turns: _isMenuExpanded ? 0.0 : 0.5,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(
-                Icons.keyboard_arrow_up_rounded,
-                color: const Color(0xFF00E5FF),
-                size: isDesktop ? 22 : 18,
+            child: Center(
+              child: AnimatedRotation(
+                turns: _isMenuExpanded ? 0.0 : 0.5,
+                duration: const Duration(milliseconds: 200),
+                child: Transform.scale(
+                  scaleX: 5.0,
+                  scaleY: 1.0,
+                  child: Icon(
+                    Icons.keyboard_arrow_up_rounded,
+                    color: const Color(0xFF00E5FF),
+                    size: isDesktop ? 20 : 16,
+                  ),
+                ),
               ),
             ),
           ),
@@ -2322,7 +2330,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                           _chatFontSize = 11.0;
                         }),
                       ),
-                      const SizedBox(width: 6),
                       IconButton(
                         icon: const Icon(Icons.settings_outlined, size: 21, color: Colors.white54),
                         tooltip: 'Relay Administration',
