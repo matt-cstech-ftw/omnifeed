@@ -134,6 +134,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   int _portraitTabIndex = 0;
   bool _isMenuExpanded = true;
 
+  // Secret 5-Tap Admin Gate Tracker
+  int _logoTapCount = 0;
+  Timer? _logoTapTimer;
+
   final Map<String, TikTokLiveClient> _ttClientsMap = {};
   final Map<String, WebSocketChannel> _ttWebChannelsMap = {};
   WebSocketChannel? _twitchChannel;
@@ -154,6 +158,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   @override
   void dispose() {
     _disconnectAll();
+    _logoTapTimer?.cancel();
     _chatScrollController.dispose();
     _eventsScrollController.dispose();
     _ttPrimaryInput.dispose();
@@ -163,12 +168,25 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     super.dispose();
   }
 
+  void _onLogoTapped() {
+    _logoTapCount++;
+    _logoTapTimer?.cancel();
+    _logoTapTimer = Timer(const Duration(seconds: 2), () {
+      _logoTapCount = 0;
+    });
+
+    if (_logoTapCount >= 5) {
+      _logoTapCount = 0;
+      _logoTapTimer?.cancel();
+      _showAdminKeyPrompt();
+    }
+  }
+
   Color _getColorForHost(String? host) {
     if (host == null || host.isEmpty) return const Color(0xFF00E5FF);
     final key = host.toLowerCase().replaceAll('@', '').trim();
     if (!_hostColors.containsKey(key)) {
       final next = _hostPalette[_hostColors.length % _hostPalette.length];
-      _hostColors[key]!;
       _hostColors[key] = next;
     }
     return _hostColors[key]!;
@@ -1969,37 +1987,41 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   }
 
   Widget _buildBrandLogo({bool isDesktop = false}) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 5 : 3.5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B1B24),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF2E2E3D), width: 1),
-      ),
-      child: RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: 'OMNI',
-              style: TextStyle(
-                fontFamily: 'Orbitron',
-                fontSize: isDesktop ? 18 : 15,
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
+    return InkWell(
+      onTap: _onLogoTapped,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 5 : 3.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B1B24),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF2E2E3D), width: 1),
+        ),
+        child: RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: 'OMNI',
+                style: TextStyle(
+                  fontFamily: 'Orbitron',
+                  fontSize: isDesktop ? 18 : 15,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
               ),
-            ),
-            TextSpan(
-              text: 'FEED',
-              style: TextStyle(
-                fontFamily: 'Orbitron',
-                fontSize: isDesktop ? 22 : 19,
-                color: const Color(0xFF00E5FF),
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.0,
+              TextSpan(
+                text: 'FEED',
+                style: TextStyle(
+                  fontFamily: 'Orbitron',
+                  fontSize: isDesktop ? 22 : 19,
+                  color: const Color(0xFF00E5FF),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2213,22 +2235,28 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
-                  // Row 3: Utilities
+                  // Row 3: Utilities (50% Larger Icons: 27px, No Gear Icon)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.favorite_outline, size: 18, color: Color(0xFFFE2C55)),
+                        iconSize: 27,
+                        padding: const EdgeInsets.all(8),
+                        icon: const Icon(Icons.favorite_outline, color: Color(0xFFFE2C55)),
                         tooltip: 'Support OmniFeed',
                         onPressed: _showSupportModal,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.format_size_rounded, size: 18, color: Color(0xFF00E5FF)),
+                        iconSize: 27,
+                        padding: const EdgeInsets.all(8),
+                        icon: const Icon(Icons.format_size_rounded, color: Color(0xFF00E5FF)),
                         tooltip: 'Chat Appearance (Text Size & Color)',
                         onPressed: _showChatAppearanceModal,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.color_lens_outlined, size: 18, color: Colors.grey),
+                        iconSize: 27,
+                        padding: const EdgeInsets.all(8),
+                        icon: const Icon(Icons.color_lens_outlined, color: Colors.grey),
                         tooltip: 'Reset Colors',
                         onPressed: () => setState(() {
                           _colors.addAll(_factoryColors);
@@ -2237,11 +2265,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                           _chatUserColor = _defaultChatUserColor;
                           _chatFontSize = 11.0;
                         }),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.settings_outlined, size: 18, color: Colors.white54),
-                        tooltip: 'Relay Administration',
-                        onPressed: _showAdminKeyPrompt,
                       ),
                     ],
                   ),
@@ -2304,7 +2327,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 10, color: Color(0xFF242432)),
-                  // Row 2: Utilities + Badges (Scaled for desktop)
+                  // Row 2: Utilities + Badges (Desktop, No Gear Icon)
                   Row(
                     children: [
                       IconButton(
@@ -2329,11 +2352,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                           _chatUserColor = _defaultChatUserColor;
                           _chatFontSize = 11.0;
                         }),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.settings_outlined, size: 21, color: Colors.white54),
-                        tooltip: 'Relay Administration',
-                        onPressed: _showAdminKeyPrompt,
                       ),
                       const Spacer(),
                       TextButton(
