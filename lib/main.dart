@@ -2303,21 +2303,30 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         ),
         const SizedBox(width: 8),
       ],
-      ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _isConnected ? Colors.redAccent : const Color(0xFF1E3A8A),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      Padding(
+        padding: const EdgeInsets.only(top: 2.0),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isConnected ? Colors.redAccent : const Color(0xFF1E3A8A),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+          onPressed: _toggleConnection,
+          child: Text(_isConnected ? 'Disconnect' : 'Connect', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
         ),
-        onPressed: _toggleConnection,
-        child: Text(_isConnected ? 'Disconnect' : 'Connect', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
       ),
       const SizedBox(width: 8),
-      TextButton(
-        onPressed: _showHelpDialog,
-        child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
+      Padding(
+        padding: const EdgeInsets.only(top: 2.0),
+        child: TextButton(
+          onPressed: _showHelpDialog,
+          child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
+        ),
       ),
       const SizedBox(width: 8),
-      _buildWhatIsOmniFeedBadge(),
+      Padding(
+        padding: const EdgeInsets.only(top: 2.0),
+        child: _buildWhatIsOmniFeedBadge(),
+      ),
     ];
   }
 
@@ -2330,9 +2339,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           SingleChildScrollView(
             controller: _headerScrollController,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 8, right: 36),
+            padding: const EdgeInsets.only(left: 8, right: 36, top: 4),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildBrandLogo(),
                 const SizedBox(width: 10),
@@ -2370,7 +2379,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   tooltip: 'Relay Administration',
                   onPressed: _showAdminKeyPrompt,
                 ),
-                const VerticalDivider(width: 16, indent: 12, endIndent: 12),
+                const VerticalDivider(width: 16, indent: 4, endIndent: 4),
                 ..._buildInputsList(),
               ],
             ),
@@ -2472,7 +2481,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _buildInputsList(),
               ),
             ),
