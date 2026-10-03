@@ -111,6 +111,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     const Color(0xFFE040FB),
   ];
 
+  static const Color _neonPink = Color(0xFFFF06B5);
+
   double _chatFontSize = 11.0;
   Color _chatTextColor = Colors.white;
   Color _chatUserColor = Colors.white;
@@ -134,7 +136,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   int _portraitTabIndex = 0;
   bool _isMenuExpanded = true;
 
-  // Secret 5-Tap Admin Gate Tracker
   int _logoTapCount = 0;
   Timer? _logoTapTimer;
 
@@ -598,7 +599,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                     Expanded(
                       child: Text(
                         "We're experiencing high demand! As an early-stage project, OmniFeed relies on community support to scale our infrastructure. Contributing financially directly supports server and development costs, but spreading the word is just as valuable in helping the tool grow.",
-                        style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.85), height: 1.4),
+                        style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.4),
                       ),
                     ),
                   ],
@@ -2092,20 +2093,32 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   }
 
   Widget _buildConnectButton({bool isDesktop = false}) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: _isConnected ? Colors.redAccent : const Color(0xFF1E3A8A),
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 13, vertical: isDesktop ? 11 : 8),
-        minimumSize: Size(0, isDesktop ? 40 : 34),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-      ),
-      onPressed: _toggleConnection,
-      child: Text(
-        _isConnected ? 'Disconnect' : 'Connect',
-        style: TextStyle(
-          fontSize: isDesktop ? 13 : 11,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
+    return InkWell(
+      onTap: _toggleConnection,
+      borderRadius: BorderRadius.circular(5),
+      child: Container(
+        height: isDesktop ? 40 : 36,
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 13),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _isConnected ? _neonPink : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: _neonPink, width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: _neonPink.withValues(alpha: _isConnected ? 0.35 : 0.15),
+              blurRadius: 6,
+              spreadRadius: 0.5,
+            ),
+          ],
+        ),
+        child: Text(
+          _isConnected ? 'Disconnect' : 'Connect',
+          style: TextStyle(
+            fontSize: isDesktop ? 13 : 11,
+            fontWeight: FontWeight.bold,
+            color: _isConnected ? Colors.transparent : _neonPink,
+          ),
         ),
       ),
     );
@@ -2202,7 +2215,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       child: !_isMenuExpanded
           ? const SizedBox.shrink()
           : Container(
-              color: const Color(0xFF161620),
+              decoration: const BoxDecoration(
+                color: Color(0xFF161620),
+                border: Border(bottom: BorderSide(color: _neonPink, width: 1.0)),
+              ),
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2235,7 +2251,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
-                  // Row 3: Utilities (50% Larger Icons: 27px, No Gear Icon)
+                  // Row 3: Utilities
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -2293,12 +2309,15 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       child: !_isMenuExpanded
           ? const SizedBox.shrink()
           : Container(
-              color: const Color(0xFF161620),
+              decoration: const BoxDecoration(
+                color: Color(0xFF161620),
+                border: Border(bottom: BorderSide(color: _neonPink, width: 1.0)),
+              ),
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platforms + Active Inputs + Connect (Scaled for desktop)
+                  // Row 1: Platforms + Active Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2327,7 +2346,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 10, color: Color(0xFF242432)),
-                  // Row 2: Utilities + Badges (Desktop, No Gear Icon)
+                  // Row 2: Utilities + Badges
                   Row(
                     children: [
                       IconButton(
@@ -2673,18 +2692,27 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     final active = _enabled[key]!;
     return InkWell(
       onTap: () => setState(() => _enabled[key] = !active),
+      borderRadius: BorderRadius.circular(5),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8, vertical: isDesktop ? 7 : 5),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF3F51B5) : const Color(0xFF24242D),
-          borderRadius: BorderRadius.circular(4),
+          color: active ? _neonPink : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: _neonPink, width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: _neonPink.withValues(alpha: active ? 0.35 : 0.1),
+              blurRadius: 6,
+              spreadRadius: 0.5,
+            ),
+          ],
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: isDesktop ? 12 : 10,
             fontWeight: FontWeight.bold,
-            color: active ? Colors.white : Colors.grey,
+            color: active ? Colors.transparent : _neonPink,
           ),
         ),
       ),
