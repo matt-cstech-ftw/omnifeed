@@ -138,8 +138,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   bool _isConnected = false;
   String _statusText = 'Idle - Enter handles and connect';
 
-  String _accessKey = '';
-
   @override
   void initState() {
     super.initState();
@@ -156,7 +154,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkHeaderOverflow();
-      _loadAuthKey();
+      _checkAgreementStatus();
       _loadSavedHandles();
     });
   }
@@ -186,13 +184,11 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     return _hostColors[key]!;
   }
 
-  Future<void> _loadAuthKey() async {
+  Future<void> _checkAgreementStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString('omnifeed_access_key') ?? '';
-    if (key.isNotEmpty) {
-      setState(() => _accessKey = key);
-    } else {
-      _showAuthPrompt();
+    final agreed = prefs.getBool('omnifeed_agreement_accepted') ?? false;
+    if (!agreed) {
+      _showWelcomeAgreementModal();
     }
   }
 
@@ -219,64 +215,163 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     await prefs.setString('saved_handle_yt', _ytInput.text.trim());
   }
 
-  void _showAuthPrompt() {
-    final entry = TextEditingController();
+  void _showWelcomeAgreementModal() {
+    bool dontShowAgain = false;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.lock_outline, color: Color(0xFF00E5FF), size: 20),
-            SizedBox(width: 8),
-            Text('Access Passphrase', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter the access phrase to unlock feed relay access:',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
+      builder: (ctx) => StatefulBuilder(
+        builder: (c, setDState) => AlertDialog(
+          backgroundColor: const Color(0xFF16161D),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.verified_user_rounded, color: Color(0xFF00E5FF), size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Welcome to OmniFeed HUD',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Multi-Stream Aggregator • Community Edition',
+                      style: TextStyle(fontSize: 10, color: Colors.white54),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'OmniFeed unites chats, co-hosts, battle participants, and gift events into a single, real-time second-screen view.',
+                    style: TextStyle(fontSize: 12, height: 1.35, color: Colors.white),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildAgreementPoint(
+                    icon: Icons.shield_outlined,
+                    title: '1. Zero Data Collection & Privacy',
+                    description: 'We do not collect, store, sell, or track personal data. OmniFeed never asks for or accesses your streaming account logins, passwords, or credentials. It operates solely by listening to public stream telemetry.',
+                  ),
+                  const SizedBox(height: 10),
+                  _buildAgreementPoint(
+                    icon: Icons.speed_rounded,
+                    title: '2. Early-Stage Development & Resources',
+                    description: 'OmniFeed runs on limited resources until development is further along. Safeguards are in place, but you may occasionally see brief capacity holds or minor latency during peak periods.',
+                  ),
+                  const SizedBox(height: 10),
+                  _buildAgreementPoint(
+                    icon: Icons.alt_route_rounded,
+                    title: '3. Platform Independence',
+                    description: 'OmniFeed acts strictly as an external viewer and listener. We are not affiliated with, sponsored by, or endorsed by TikTok, Twitch, Kick, or YouTube. Your broadcasts remain subject to each platform’s rules.',
+                  ),
+                  const SizedBox(height: 10),
+                  _buildAgreementPoint(
+                    icon: Icons.handshake_outlined,
+                    title: '4. Fair Usage & Community Powered',
+                    description: 'Please do not run automated scrapers or spam relay connections. Tool development and server hosting rely directly on creator feedback and voluntary community support.',
+                  ),
+                  const Divider(height: 20, color: Color(0xFF2A2A38)),
+                  InkWell(
+                    onTap: () {
+                      setDState(() {
+                        dontShowAgain = !dontShowAgain;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: Checkbox(
+                              value: dontShowAgain,
+                              activeColor: const Color(0xFF00E5FF),
+                              checkColor: Colors.black,
+                              onChanged: (v) {
+                                setDState(() {
+                                  dontShowAgain = v ?? false;
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            "Don't show this again",
+                            style: TextStyle(fontSize: 11, color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: entry,
-              decoration: const InputDecoration(
-                hintText: 'Passphrase (#...)',
-                isDense: true,
-                border: OutlineInputBorder(),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00E5FF),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: () async {
+                if (dontShowAgain) {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('omnifeed_agreement_accepted', true);
+                }
+                Navigator.pop(ctx);
+              },
+              child: const Text(
+                'Agree & Continue',
+                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
               ),
             ),
           ],
         ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () async {
-              final val = entry.text.trim();
-              if (val == '#testcapacity') {
-                Navigator.pop(ctx);
-                _showAtCapacityModal();
-                return;
-              }
-              if (val.isNotEmpty) {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('omnifeed_access_key', val);
-                setState(() => _accessKey = val);
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('Unlock', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
+    );
+  }
+
+  Widget _buildAgreementPoint({required IconData icon, required String title, required String description}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: const Color(0xFF00E5FF), size: 17),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 2),
+              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.35)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -413,6 +508,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               Navigator.pop(ctx);
               if (key == '#testcapacity') {
                 _showAtCapacityModal();
+                return;
+              }
+              if (key == '#testwelcome') {
+                _showWelcomeAgreementModal();
                 return;
               }
               if (key.isNotEmpty) {
@@ -1392,8 +1491,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
 
   void _connectTikTokWebRelay(String handle) {
     final cleanHandle = handle.replaceAll('@', '').trim();
-    final encodedToken = Uri.encodeComponent(_accessKey);
-    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws?token=$encodedToken');
+    final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws');
 
     _addEvent(StreamMessage(
       platform: 'SYS',
