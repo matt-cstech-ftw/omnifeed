@@ -1393,7 +1393,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     setState(() {
       _isConnected = true;
       _statusText = 'Connected';
-      _isMenuExpanded = false; // Collapse menu automatically on connect
+      _isMenuExpanded = false;
     });
 
     _connectStreams();
@@ -1967,24 +1967,36 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildBrandLogo() {
+  Widget _buildBrandLogo({bool isDesktop = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 5 : 3.5),
       decoration: BoxDecoration(
         color: const Color(0xFF1B1B24),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: const Color(0xFF2E2E3D), width: 1),
       ),
       child: RichText(
-        text: const TextSpan(
+        text: TextSpan(
           children: [
             TextSpan(
               text: 'OMNI',
-              style: TextStyle(fontFamily: 'Orbitron', fontSize: 16, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.8),
+              style: TextStyle(
+                fontFamily: 'Orbitron',
+                fontSize: isDesktop ? 18 : 15,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+              ),
             ),
             TextSpan(
               text: 'FEED',
-              style: TextStyle(fontFamily: 'Orbitron', fontSize: 20, color: Color(0xFF00E5FF), fontWeight: FontWeight.w900, letterSpacing: 1.0),
+              style: TextStyle(
+                fontFamily: 'Orbitron',
+                fontSize: isDesktop ? 22 : 19,
+                color: const Color(0xFF00E5FF),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+              ),
             ),
           ],
         ),
@@ -1992,12 +2004,12 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildInstallAppButton() {
+  Widget _buildInstallAppButton({bool isDesktop = false}) {
     return InkWell(
       onTap: _handleInstallButton,
       borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 6 : 4.5),
         decoration: BoxDecoration(
           color: const Color(0xFF0A2B35),
           borderRadius: BorderRadius.circular(6),
@@ -2010,14 +2022,19 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             ),
           ],
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.install_mobile_rounded, size: 14, color: Color(0xFF00E5FF)),
-            SizedBox(width: 5),
+            Icon(Icons.install_mobile_rounded, size: isDesktop ? 16 : 14, color: const Color(0xFF00E5FF)),
+            const SizedBox(width: 5),
             Text(
               'Install App',
-              style: TextStyle(fontSize: 11, color: Color(0xFF00E5FF), fontWeight: FontWeight.w800, letterSpacing: 0.3),
+              style: TextStyle(
+                fontSize: isDesktop ? 12 : 11,
+                color: const Color(0xFF00E5FF),
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.3,
+              ),
             ),
           ],
         ),
@@ -2025,32 +2042,55 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildWhatIsOmniFeedBadge() {
+  Widget _buildWhatIsOmniFeedBadge({bool isDesktop = false}) {
     return InkWell(
       onTap: _showAboutOmniFeedModal,
       borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10, vertical: isDesktop ? 8 : 6),
         decoration: BoxDecoration(
           color: const Color(0xFF0E2230),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: const Color(0xFF00E5FF), width: 1.2),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.help_outline_rounded, size: 14, color: Color(0xFF00E5FF)),
-            SizedBox(width: 5),
-            Text('What is OmniFeed?', style: TextStyle(fontSize: 11, color: Color(0xFF00E5FF), fontWeight: FontWeight.w800)),
+            Icon(Icons.help_outline_rounded, size: isDesktop ? 16 : 14, color: const Color(0xFF00E5FF)),
+            const SizedBox(width: 5),
+            Text(
+              'What is OmniFeed?',
+              style: TextStyle(fontSize: isDesktop ? 12.5 : 11, color: const Color(0xFF00E5FF), fontWeight: FontWeight.w800),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPersistentTopBar() {
+  Widget _buildConnectButton({bool isDesktop = false}) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _isConnected ? Colors.redAccent : const Color(0xFF1E3A8A),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 13, vertical: isDesktop ? 11 : 8),
+        minimumSize: Size(0, isDesktop ? 40 : 34),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+      ),
+      onPressed: _toggleConnection,
+      child: Text(
+        _isConnected ? 'Disconnect' : 'Connect',
+        style: TextStyle(
+          fontSize: isDesktop ? 13 : 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersistentTopBar({required bool isDesktop}) {
     return Container(
-      height: 46,
+      height: isDesktop ? 50 : 46,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: const BoxDecoration(
         color: Color(0xFF141419),
@@ -2058,10 +2098,10 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
       ),
       child: Row(
         children: [
-          _buildBrandLogo(),
+          _buildBrandLogo(isDesktop: isDesktop),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+            padding: EdgeInsets.symmetric(horizontal: isDesktop ? 8 : 6, vertical: isDesktop ? 3.5 : 2.5),
             decoration: BoxDecoration(
               color: _isConnected ? Colors.green.withValues(alpha: 0.18) : Colors.white10,
               borderRadius: BorderRadius.circular(4),
@@ -2070,40 +2110,57 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircleAvatar(radius: 3.5, backgroundColor: _isConnected ? Colors.greenAccent : Colors.white38),
+                CircleAvatar(radius: isDesktop ? 4 : 3.5, backgroundColor: _isConnected ? Colors.greenAccent : Colors.white38),
                 const SizedBox(width: 4),
                 Text(
                   _isConnected ? 'LIVE' : 'IDLE',
-                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: _isConnected ? Colors.greenAccent : Colors.white54),
+                  style: TextStyle(
+                    fontSize: isDesktop ? 11 : 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: _isConnected ? Colors.greenAccent : Colors.white54,
+                  ),
                 ),
               ],
             ),
           ),
           const Spacer(),
-          _buildInstallAppButton(),
-          const SizedBox(width: 6),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isConnected ? Colors.redAccent : const Color(0xFF1E3A8A),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              minimumSize: const Size(0, 32),
-            ),
-            onPressed: _toggleConnection,
-            child: Text(_isConnected ? 'Disconnect' : 'Connect', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            icon: AnimatedRotation(
-              turns: _isMenuExpanded ? 0.5 : 0.0,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(Icons.expand_more_rounded, color: Color(0xFF00E5FF), size: 22),
-            ),
-            tooltip: _isMenuExpanded ? 'Hide Controls' : 'Show Controls',
-            onPressed: () => setState(() => _isMenuExpanded = !_isMenuExpanded),
-          ),
+          _buildInstallAppButton(isDesktop: isDesktop),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBottomToggleBar({required bool isDesktop}) {
+    return InkWell(
+      onTap: () => setState(() => _isMenuExpanded = !_isMenuExpanded),
+      child: Container(
+        height: isDesktop ? 26 : 22,
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1B1B24),
+          border: Border(
+            top: BorderSide(color: Color(0xFF242432), width: 1),
+            bottom: BorderSide(color: Color(0xFF22222D), width: 1),
+          ),
+        ),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF232330),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: AnimatedRotation(
+              turns: _isMenuExpanded ? 0.0 : 0.5,
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                Icons.keyboard_arrow_up_rounded,
+                color: const Color(0xFF00E5FF),
+                size: isDesktop ? 22 : 18,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2120,26 +2177,30 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platform Pills
+                  // Row 1: Platform Selector Pills
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildTogglePill('TT', 'TikTok'),
+                      _buildTogglePill('TT', 'TikTok', isDesktop: false),
                       const SizedBox(width: 6),
-                      _buildTogglePill('TW', 'Twitch'),
+                      _buildTogglePill('TW', 'Twitch', isDesktop: false),
                       const SizedBox(width: 6),
-                      _buildTogglePill('KC', 'Kick'),
+                      _buildTogglePill('KC', 'Kick', isDesktop: false),
                       const SizedBox(width: 6),
-                      _buildTogglePill('YT', 'YouTube'),
+                      _buildTogglePill('YT', 'YouTube', isDesktop: false),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Row 2: Inputs
+                  // Row 2: Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _buildInputsOnlyList(),
+                      children: [
+                        ..._buildInputsOnlyList(isDesktop: false),
+                        _buildConnectButton(isDesktop: false),
+                        const SizedBox(width: 4),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -2185,7 +2246,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                         child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
                       ),
                       const SizedBox(width: 10),
-                      _buildWhatIsOmniFeedBadge(),
+                      _buildWhatIsOmniFeedBadge(isDesktop: false),
                     ],
                   ),
                 ],
@@ -2202,11 +2263,11 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           ? const SizedBox.shrink()
           : Container(
               color: const Color(0xFF161620),
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platforms + Active Inputs
+                  // Row 1: Platforms + Active Inputs + Connect (Scaled for desktop)
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2216,40 +2277,42 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                           padding: const EdgeInsets.only(top: 4.0),
                           child: Row(
                             children: [
-                              _buildTogglePill('TT', 'TikTok'),
-                              const SizedBox(width: 4),
-                              _buildTogglePill('TW', 'Twitch'),
-                              const SizedBox(width: 4),
-                              _buildTogglePill('KC', 'Kick'),
-                              const SizedBox(width: 4),
-                              _buildTogglePill('YT', 'YouTube'),
+                              _buildTogglePill('TT', 'TikTok', isDesktop: true),
+                              const SizedBox(width: 6),
+                              _buildTogglePill('TW', 'Twitch', isDesktop: true),
+                              const SizedBox(width: 6),
+                              _buildTogglePill('KC', 'Kick', isDesktop: true),
+                              const SizedBox(width: 6),
+                              _buildTogglePill('YT', 'YouTube', isDesktop: true),
                             ],
                           ),
                         ),
-                        const VerticalDivider(width: 20, indent: 4, endIndent: 4),
-                        ..._buildInputsOnlyList(),
+                        const VerticalDivider(width: 24, indent: 4, endIndent: 4),
+                        ..._buildInputsOnlyList(isDesktop: true),
+                        const SizedBox(width: 4),
+                        _buildConnectButton(isDesktop: true),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  const Divider(height: 8, color: Color(0xFF242432)),
-                  // Row 2: Utilities + Badges
+                  const SizedBox(height: 6),
+                  const Divider(height: 10, color: Color(0xFF242432)),
+                  // Row 2: Utilities + Badges (Scaled for desktop)
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.favorite_outline, size: 18, color: Color(0xFFFE2C55)),
+                        icon: const Icon(Icons.favorite_outline, size: 21, color: Color(0xFFFE2C55)),
                         tooltip: 'Support OmniFeed',
                         onPressed: _showSupportModal,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       IconButton(
-                        icon: const Icon(Icons.format_size_rounded, size: 18, color: Color(0xFF00E5FF)),
+                        icon: const Icon(Icons.format_size_rounded, size: 21, color: Color(0xFF00E5FF)),
                         tooltip: 'Chat Appearance (Text Size & Color)',
                         onPressed: _showChatAppearanceModal,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       IconButton(
-                        icon: const Icon(Icons.color_lens_outlined, size: 18, color: Colors.grey),
+                        icon: const Icon(Icons.color_lens_outlined, size: 21, color: Colors.grey),
                         tooltip: 'Reset Colors',
                         onPressed: () => setState(() {
                           _colors.addAll(_factoryColors);
@@ -2259,19 +2322,19 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                           _chatFontSize = 11.0;
                         }),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       IconButton(
-                        icon: const Icon(Icons.settings_outlined, size: 18, color: Colors.white54),
+                        icon: const Icon(Icons.settings_outlined, size: 21, color: Colors.white54),
                         tooltip: 'Relay Administration',
                         onPressed: _showAdminKeyPrompt,
                       ),
                       const Spacer(),
                       TextButton(
                         onPressed: _showHelpDialog,
-                        child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
+                        child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 13, fontWeight: FontWeight.bold)),
                       ),
-                      const SizedBox(width: 8),
-                      _buildWhatIsOmniFeedBadge(),
+                      const SizedBox(width: 10),
+                      _buildWhatIsOmniFeedBadge(isDesktop: true),
                     ],
                   ),
                 ],
@@ -2280,19 +2343,20 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
-  List<Widget> _buildInputsOnlyList() {
+  List<Widget> _buildInputsOnlyList({required bool isDesktop}) {
     return [
       if (_enabled['TT']!) ...[
         _buildInputCard(
           controller: _ttPrimaryInput,
           label: 'TikTok @',
-          width: 110,
+          width: isDesktop ? 135 : 110,
           platformKey: 'TT',
+          isDesktop: isDesktop,
           extraAction: InkWell(
             onTap: _openHostModal,
             borderRadius: BorderRadius.circular(4),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 6 : 5, vertical: isDesktop ? 2 : 1.5),
               decoration: BoxDecoration(
                 color: const Color(0xFF102A38),
                 borderRadius: BorderRadius.circular(4),
@@ -2301,30 +2365,30 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.group_add, size: 13, color: Color(0xFF00E5FF)),
+                  Icon(Icons.group_add, size: isDesktop ? 14 : 13, color: const Color(0xFF00E5FF)),
                   const SizedBox(width: 2),
                   Text(
                     '+${_ttHosts.length > 1 ? _ttHosts.length - 1 : 0}',
-                    style: const TextStyle(fontSize: 10, color: Color(0xFF00E5FF), fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: isDesktop ? 11 : 10, color: const Color(0xFF00E5FF), fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: isDesktop ? 10 : 8),
       ],
       if (_enabled['TW']!) ...[
-        _buildInputCard(controller: _twInput, label: 'Twitch', width: 110, platformKey: 'TW'),
-        const SizedBox(width: 8),
+        _buildInputCard(controller: _twInput, label: 'Twitch', width: isDesktop ? 135 : 110, platformKey: 'TW', isDesktop: isDesktop),
+        SizedBox(width: isDesktop ? 10 : 8),
       ],
       if (_enabled['KC']!) ...[
-        _buildInputCard(controller: _kcInput, label: 'Kick', width: 110, platformKey: 'KC'),
-        const SizedBox(width: 8),
+        _buildInputCard(controller: _kcInput, label: 'Kick', width: isDesktop ? 135 : 110, platformKey: 'KC', isDesktop: isDesktop),
+        SizedBox(width: isDesktop ? 10 : 8),
       ],
       if (_enabled['YT']!) ...[
-        _buildInputCard(controller: _ytInput, label: 'YouTube ID', width: 110, platformKey: 'YT'),
-        const SizedBox(width: 8),
+        _buildInputCard(controller: _ytInput, label: 'YouTube ID', width: isDesktop ? 135 : 110, platformKey: 'YT', isDesktop: isDesktop),
+        SizedBox(width: isDesktop ? 10 : 8),
       ],
     ];
   }
@@ -2487,8 +2551,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         body: SafeArea(
           child: Column(
             children: [
-              _buildPersistentTopBar(),
+              _buildPersistentTopBar(isDesktop: isLandscape),
               isLandscape ? _buildLandscapeAccordionDrawer() : _buildPortraitAccordionDrawer(),
+              _buildBottomToggleBar(isDesktop: isLandscape),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(6.0),
@@ -2499,7 +2564,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                             Expanded(flex: 3, child: _buildEventsPane()),
                             const SizedBox(width: 6),
                             Expanded(flex: 5, child: _buildChatPane()),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 2),
                             Expanded(flex: 2, child: _buildStatsPane(topSupporter)),
                           ],
                         )
@@ -2579,17 +2644,24 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildTogglePill(String key, String label) {
+  Widget _buildTogglePill(String key, String label, {required bool isDesktop}) {
     final active = _enabled[key]!;
     return InkWell(
       onTap: () => setState(() => _enabled[key] = !active),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8, vertical: isDesktop ? 7 : 5),
         decoration: BoxDecoration(
           color: active ? const Color(0xFF3F51B5) : const Color(0xFF24242D),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: active ? Colors.white : Colors.grey)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: isDesktop ? 12 : 10,
+            fontWeight: FontWeight.bold,
+            color: active ? Colors.white : Colors.grey,
+          ),
+        ),
       ),
     );
   }
@@ -2599,6 +2671,7 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     required String label,
     required double width,
     required String platformKey,
+    required bool isDesktop,
     Widget? extraAction,
   }) {
     return SizedBox(
@@ -2608,14 +2681,14 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: 36,
+            height: isDesktop ? 40 : 36,
             child: TextField(
               controller: controller,
-              style: const TextStyle(fontSize: 11),
+              style: TextStyle(fontSize: isDesktop ? 12.5 : 11),
               decoration: InputDecoration(
                 labelText: label,
-                labelStyle: const TextStyle(fontSize: 10),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                labelStyle: TextStyle(fontSize: isDesktop ? 11.5 : 10),
+                contentPadding: EdgeInsets.symmetric(horizontal: isDesktop ? 10 : 8, vertical: 4),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
               ),
             ),
@@ -2624,12 +2697,12 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Color: ', style: TextStyle(fontSize: 9, color: Colors.grey)),
+              Text('Color: ', style: TextStyle(fontSize: isDesktop ? 10.5 : 9, color: Colors.grey)),
               InkWell(
                 onTap: () => _openColorPicker(platformKey),
                 child: Container(
-                  width: 14,
-                  height: 14,
+                  width: isDesktop ? 16 : 14,
+                  height: isDesktop ? 16 : 14,
                   decoration: BoxDecoration(
                     color: _colors[platformKey],
                     borderRadius: BorderRadius.circular(3),
