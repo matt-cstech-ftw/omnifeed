@@ -81,6 +81,23 @@
   </div>
 
   <script>
+    // PWA install event listener
+    window.deferredPWAInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPWAInstallPrompt = e;
+      window.dispatchEvent(new Event('pwa-prompt-available'));
+    });
+
+    window.triggerPWAInstall = function() {
+      if (window.deferredPWAInstallPrompt) {
+        window.deferredPWAInstallPrompt.prompt();
+        window.deferredPWAInstallPrompt = null;
+        return true;
+      }
+      return false;
+    };
+
     function removeLoader() {
       const loader = document.getElementById('loading-container');
       if (loader) {
@@ -94,8 +111,6 @@
     }
 
     window.addEventListener('flutter-first-frame', removeLoader);
-
-    // Fallback: remove after max timeout if event was missed
     setTimeout(removeLoader, 8000);
   </script>
 
