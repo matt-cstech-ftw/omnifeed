@@ -127,20 +127,16 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final Set<String> _promptedHosts = {};
   final Map<String, int> _gifterScores = {};
 
-  // Per-stream join tracking, 30s calibration buffer & rolling rate
   final Map<String, DateTime> _hostConnectedAt = {};
-  final Map<String, int> _initialWarmupCounts = {};
   final Map<String, List<DateTime>> _messageTimestamps = {};
   Timer? _velocityTimer;
   Timer? _stopwatchTimer;
   int _sessionSeconds = 0;
 
-  // Stats Visibility Toggles
   bool _showVelocity = true;
   bool _showStopwatch = true;
   bool _showTopSupporter = true;
 
-  // Hype Animation for 100% velocity
   late AnimationController _hypeController;
   late Animation<double> _hypeAnimation;
 
@@ -178,7 +174,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _hypeController, curve: Curves.easeInOut),
     );
 
-    _velocityTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _velocityTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _pruneOldTimestamps();
       if (mounted) setState(() {});
     });
@@ -208,7 +204,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   void _markHostConnected(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt[clean] = DateTime.now();
-    _initialWarmupCounts[clean] = 0;
     _messageTimestamps[clean] = [];
   }
 
@@ -224,18 +219,16 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final now = DateTime.now();
     final connectedTime = _hostConnectedAt[clean];
 
-    if (connectedTime != null) {
-      final elapsed = now.difference(connectedTime).inSeconds;
-      if (elapsed < 30) {
-        _initialWarmupCounts[clean] = (_initialWarmupCounts[clean] ?? 0) + 1;
-      }
+    // Discard the initial 3-second socket backlog burst
+    if (connectedTime != null && now.difference(connectedTime).inSeconds < 3) {
+      return;
     }
 
     _messageTimestamps.putIfAbsent(clean, () => []).add(now);
   }
 
   void _pruneOldTimestamps() {
-    final cutoff = DateTime.now().subtract(const Duration(seconds: 60));
+    final cutoff = DateTime.now().subtract(const Duration(seconds: 30));
     for (final key in _messageTimestamps.keys) {
       _messageTimestamps[key]!.removeWhere((t) => t.isBefore(cutoff));
     }
@@ -243,27 +236,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   int _getVelocityFor(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
-    final connectedTime = _hostConnectedAt[clean];
-    if (connectedTime == null) return 0;
-
-    final elapsed = DateTime.now().difference(connectedTime).inSeconds;
-    if (elapsed < 30) {
-      return 0;
-    } else if (elapsed < 60) {
-      // Base calculation on the 30-second initial sample projected to 1 minute
-      final warmupCount = _initialWarmupCounts[clean] ?? 0;
-      final recent = _messageTimestamps[clean]?.length ?? 0;
-      return recent > (warmupCount * 2) ? recent : (warmupCount * 2);
-    }
-
+    if (_isHostCalibrating(clean)) return 0;
     return _messageTimestamps[clean]?.length ?? 0;
   }
 
-  int _getScaledVelocityStep(int count) {
-    const int maxTarget = 30; // 30 msgs/min = 100%
-    if (count <= 0) return 0;
-    final pct = (count / maxTarget * 100).clamp(0, 100).toInt();
-    return ((pct / 10).round() * 10).clamp(0, 100);
+  int _getScaledVelocityStep(int countIn30s) {
+    if (countIn30s <= 0) return 0;
+    if (countIn30s >= 10) return 100;
+    return countIn30s * 10;
   }
 
   String _formatDuration(int totalSeconds) {
@@ -790,7 +770,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
             onPressed: () {
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
               _showSupportModal();
             },
             child: const Row(
@@ -849,7 +829,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
             onPressed: () async {
               final key = entry.text.trim();
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
               if (key == '#testcapacity') {
                 _showAtCapacityModal();
                 return;
@@ -1070,7 +1050,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         ),
                         onPressed: () {
-                          if (ctx.mounted) Navigator.pop(ctx);
+                          Navigator.pop(ctx);
                           _launchDonationUrl();
                         },
                         child: Row(
@@ -1109,7 +1089,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         ),
                         onPressed: () {
-                          if (ctx.mounted) Navigator.pop(ctx);
+                          Navigator.pop(ctx);
                           _launchDonationUrl();
                         },
                         child: const Row(
@@ -1142,7 +1122,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         ),
                         onPressed: () {
-                          if (ctx.mounted) Navigator.pop(ctx);
+                          Navigator.pop(ctx);
                           _launchDonationUrl();
                         },
                         child: const Text(
@@ -1204,9 +1184,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               const SizedBox(height: 10),
               _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the text icon (tT) in the toolbar to adjust font sizing across all panes and set custom chat colors.'),
               const SizedBox(height: 10),
-              _buildHelpStep('6', 'Landscape & Portrait Responsive', 'Operates in 3 split panes in landscape, or a focused vertical feed with tabbed bottom panels in portrait.'),
+              _buildHelpStep('6', 'Hype Meter & Live Competition', 'Displays rolling chat momentum in discrete 0-100% steps per streamer with peak hype animations. Gauges calibrate during a 30s initializing period upon connection.'),
               const SizedBox(height: 10),
-              _buildHelpStep('7', 'Go Live', 'Tap CONNECT to aggregate live chats, subscriber badges, alerts, and diamonds simultaneously.'),
+              _buildHelpStep('7', 'Toggle Stats Panel Metrics', 'Tap the slider icon in the Session Stats pane header to toggle the Hype Meter, Session Stopwatch, or Top Supporter widgets on or off.'),
+              const SizedBox(height: 10),
+              _buildHelpStep('8', 'Go Live', 'Tap CONNECT to aggregate live chats, subscriber badges, alerts, and diamonds simultaneously.'),
             ],
           ),
         ),
@@ -1293,6 +1275,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               _buildAboutPoint(Icons.alt_route_rounded, 'Multi-Platform Aggregation', 'Combines chats and viewer interactions from TikTok, Twitch, Kick, and YouTube into one seamless, unified stream view.'),
               const SizedBox(height: 10),
               _buildAboutPoint(Icons.group_add_rounded, 'TikTok Co-Host & Battle Detection', 'Automatically detects rival anchors and co-hosts during TikTok Live sessions, allowing you to merge their live feeds with custom color coding.'),
+              const SizedBox(height: 10),
+              _buildAboutPoint(Icons.speed_rounded, 'Hype Meter & Stopwatch', 'Live chat velocity meters scale by 10% steps to drive co-host battle engagement, paired with an automated session runtime stopwatch.'),
+              const SizedBox(height: 10),
+              _buildAboutPoint(Icons.tune_rounded, 'Customizable HUD Toggles', 'Prefer a minimalist view? Use the settings toggle icon inside Session Stats to show or hide the Hype Meter, Stopwatch, or Top Supporter readouts anytime.'),
               const SizedBox(height: 10),
               _buildAboutPoint(Icons.devices_rounded, 'Second-Screen HUD', 'Designed to run cleanly on a phone, tablet, or secondary monitor so you can easily read chat, moderate, and engage without cluttering your main broadcast display.'),
               const SizedBox(height: 10),
@@ -1523,14 +1509,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               setState(() => _colors[platformKey] = _factoryColors[platformKey]!);
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text('Reset Default'),
           ),
           ElevatedButton(
             onPressed: () {
               setState(() => _colors[platformKey] = pickerColor);
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text('Apply'),
           ),
@@ -1554,7 +1540,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             onPressed: () {
               setState(() => _hostColors.remove(clean));
               onUpdate();
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text('Reset Default'),
           ),
@@ -1562,7 +1548,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             onPressed: () {
               setState(() => _hostColors[clean] = pickerColor);
               onUpdate();
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text('Apply'),
           ),
@@ -1578,7 +1564,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _disconnectAll();
       _stopwatchTimer?.cancel();
       _hostConnectedAt.clear();
-      _initialWarmupCounts.clear();
       _messageTimestamps.clear();
       _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Feeds Disconnected', badgeBg: const Color(0xFF00E5FF)));
       setState(() {
@@ -1611,7 +1596,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   void _disconnectSingleHost(String handle) {
     final clean = handle.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt.remove(clean);
-    _initialWarmupCounts.remove(clean);
     _messageTimestamps.remove(clean);
     if (kIsWeb) {
       final ch = _ttWebChannelsMap.remove(clean);
@@ -1642,7 +1626,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     _ttWebChannelsMap.clear();
     _promptedHosts.clear();
     _hostConnectedAt.clear();
-    _initialWarmupCounts.clear();
     _messageTimestamps.clear();
 
     try {
@@ -1684,7 +1667,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
             onPressed: () {
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
               _attachSingleTikTokHost(cohostHandle);
             },
             child: const Text('Add Chat', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -2449,7 +2432,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platform Selector Pills
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -2463,7 +2445,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Row 2: Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2477,7 +2458,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
-                  // Row 3: Utilities
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -2583,7 +2563,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                         tooltip: 'Chat Appearance (Text Size & Color)',
                         onPressed: _showChatAppearanceModal,
                       ),
-                      const SizedBox(width: 6),
                       IconButton(
                         icon: const Icon(Icons.color_lens_outlined, size: 21, color: Colors.grey),
                         tooltip: 'Reset Colors',
@@ -2860,7 +2839,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      'Calculating...',
+                      'Initializing...',
                       style: TextStyle(
                         fontSize: (_chatFontSize * 0.8).clamp(8.0, 13.0),
                         color: Colors.white54,
