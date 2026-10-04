@@ -89796,7 +89796,7 @@ A.apn.prototype={
 $0(){this.a.a=this.b===!0},
 $S:0}
 A.apq.prototype={
-$0(){var s=0,r=A.P(t.H),q=this
+$0(){var s=0,r=A.P(t.H),q=this,p
 var $async$$0=A.Q(function(a,b){if(a===1)return A.M(b,r)
 for(;;)switch(s){case 0:s=q.a.a?2:3
 break
@@ -89804,7 +89804,8 @@ case 2:s=5
 return A.S(A.uN(),$async$$0)
 case 5:s=4
 return A.S(b.uA("Bool","omnifeed_agreement_accepted",!0),$async$$0)
-case 4:case 3:A.cd(q.b,!1).d3(null)
+case 4:case 3:p=q.b
+if(p.e!=null)A.cd(p,!1).d3(null)
 return A.N(null,r)}})
 return A.O($async$$0,r)},
 $S:27}
@@ -89826,7 +89827,8 @@ $0(){A.cd(this.a,!1).d3(null)
 return null},
 $S:0}
 A.aox.prototype={
-$0(){A.cd(this.b,!1).d3(null)
+$0(){var s=this.b
+if(s.e!=null)A.cd(s,!1).d3(null)
 this.a.U0()},
 $S:0}
 A.aov.prototype={
@@ -89836,23 +89838,24 @@ $S:25}
 A.aou.prototype={
 $0(){var s=0,r=A.P(t.H),q,p=this,o,n
 var $async$$0=A.Q(function(a,b){if(a===1)return A.M(b,r)
-for(;;)switch(s){case 0:n=B.c.cS(p.b.a.a)
-A.cd(p.c,!1).d3(null)
-if(n==="#testcapacity"){p.a.GS()
+for(;;)switch(s){case 0:o=B.c.cS(p.b.a.a)
+n=p.c
+if(n.e!=null)A.cd(n,!1).d3(null)
+if(o==="#testcapacity"){p.a.GS()
 s=1
-break}if(n==="#testwelcome"){p.a.U2()
+break}if(o==="#testwelcome"){p.a.U2()
 s=1
-break}if(n==="#testupdating"){p.a.yM()
+break}if(o==="#testupdating"){p.a.yM()
 s=1
-break}s=n.length!==0?3:5
+break}s=o.length!==0?3:5
 break
 case 3:s=6
-return A.S(p.a.xO(n),$async$$0)
+return A.S(p.a.xO(o),$async$$0)
 case 6:s=4
 break
-case 5:o=p.a.c
-if(o==null){s=1
-break}o.ap(t.Pu).f.Dh(B.mq)
+case 5:n=p.a.c
+if(n==null){s=1
+break}n.ap(t.Pu).f.Dh(B.mq)
 case 4:case 1:return A.N(q,r)}})
 return A.O($async$$0,r)},
 $S:27}
@@ -89883,15 +89886,18 @@ $0(){A.cd(this.a,!1).d3(null)
 return null},
 $S:0}
 A.apg.prototype={
-$0(){A.cd(this.b,!1).d3(null)
+$0(){var s=this.b
+if(s.e!=null)A.cd(s,!1).d3(null)
 this.a.o7()},
 $S:0}
 A.aph.prototype={
-$0(){A.cd(this.b,!1).d3(null)
+$0(){var s=this.b
+if(s.e!=null)A.cd(s,!1).d3(null)
 this.a.o7()},
 $S:0}
 A.api.prototype={
-$0(){A.cd(this.b,!1).d3(null)
+$0(){var s=this.b
+if(s.e!=null)A.cd(s,!1).d3(null)
 this.a.o7()},
 $S:0}
 A.ap0.prototype={
@@ -90029,7 +90035,8 @@ $S:85}
 A.ao2.prototype={
 $0(){var s=this.a
 s.a4(new A.ao0(s,this.b))
-A.cd(this.c,!1).d3(null)},
+s=this.c
+if(s.e!=null)A.cd(s,!1).d3(null)},
 $S:0}
 A.ao0.prototype={
 $0(){var s=this.a,r=this.b,q=s.r.h(0,r)
@@ -90040,7 +90047,8 @@ $S:0}
 A.ao3.prototype={
 $0(){var s=this,r=s.b
 r.a4(new A.ao_(s.a,r,s.c))
-A.cd(s.d,!1).d3(null)},
+r=s.d
+if(r.e!=null)A.cd(r,!1).d3(null)},
 $S:0}
 A.ao_.prototype={
 $0(){var s=this.a.a
@@ -90058,7 +90066,8 @@ A.ao8.prototype={
 $0(){var s=this,r=s.a
 r.a4(new A.ao6(r,s.b))
 s.c.$0()
-A.cd(s.d,!1).d3(null)},
+r=s.d
+if(r.e!=null)A.cd(r,!1).d3(null)},
 $S:0}
 A.ao6.prototype={
 $0(){return this.a.w.F(0,this.b)},
@@ -90067,7 +90076,8 @@ A.ao9.prototype={
 $0(){var s=this,r=s.b
 r.a4(new A.ao5(s.a,r,s.c))
 s.d.$0()
-A.cd(s.e,!1).d3(null)},
+r=s.e
+if(r.e!=null)A.cd(r,!1).d3(null)},
 $S:0}
 A.ao5.prototype={
 $0(){var s=this.a.a
@@ -90103,7 +90113,8 @@ $0(){A.cd(this.a,!1).d3(null)
 return null},
 $S:0}
 A.aoY.prototype={
-$0(){A.cd(this.b,!1).d3(null)
+$0(){var s=this.b
+if(s.e!=null)A.cd(s,!1).d3(null)
 this.a.On(this.c)},
 $S:0}
 A.anx.prototype={
