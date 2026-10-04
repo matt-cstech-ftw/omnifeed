@@ -127,8 +127,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final Set<String> _promptedHosts = {};
   final Map<String, int> _gifterScores = {};
 
-  // Per-stream join tracking & rolling timestamps
+  // Per-stream join tracking, 30s calibration buffer & rolling rate
   final Map<String, DateTime> _hostConnectedAt = {};
+  final Map<String, int> _initialWarmupCounts = {};
   final Map<String, List<DateTime>> _messageTimestamps = {};
   Timer? _velocityTimer;
   Timer? _stopwatchTimer;
@@ -177,7 +178,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _hypeController, curve: Curves.easeInOut),
     );
 
-    // Run rolling check every 3 seconds to preserve resources
     _velocityTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       _pruneOldTimestamps();
       if (mounted) setState(() {});
@@ -208,6 +208,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   void _markHostConnected(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt[clean] = DateTime.now();
+    _initialWarmupCounts[clean] = 0;
     _messageTimestamps[clean] = [];
   }
 
@@ -215,17 +216,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     final connectedTime = _hostConnectedAt[clean];
     if (connectedTime == null) return true;
-    return DateTime.now().difference(connectedTime).inSeconds < 60;
+    return DateTime.now().difference(connectedTime).inSeconds < 30;
   }
 
   void _recordMessageForVelocity(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     final now = DateTime.now();
-
-    // Ignore messages during the 60-second warmup calibration
     final connectedTime = _hostConnectedAt[clean];
-    if (connectedTime != null && now.difference(connectedTime).inSeconds < 60) {
-      return;
+
+    if (connectedTime != null) {
+      final elapsed = now.difference(connectedTime).inSeconds;
+      if (elapsed < 30) {
+        _initialWarmupCounts[clean] = (_initialWarmupCounts[clean] ?? 0) + 1;
+      }
     }
 
     _messageTimestamps.putIfAbsent(clean, () => []).add(now);
@@ -240,6 +243,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   int _getVelocityFor(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
+    final connectedTime = _hostConnectedAt[clean];
+    if (connectedTime == null) return 0;
+
+    final elapsed = DateTime.now().difference(connectedTime).inSeconds;
+    if (elapsed < 30) {
+      return 0;
+    } else if (elapsed < 60) {
+      // Base calculation on the 30-second initial sample projected to 1 minute
+      final warmupCount = _initialWarmupCounts[clean] ?? 0;
+      final recent = _messageTimestamps[clean]?.length ?? 0;
+      return recent > (warmupCount * 2) ? recent : (warmupCount * 2);
+    }
+
     return _messageTimestamps[clean]?.length ?? 0;
   }
 
@@ -991,7 +1007,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ],
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: minAxisSize(),
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1144,6 +1160,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       ),
     );
   }
+
+  MainAxisSize minAxisSize() => MainAxisSize.min;
 
   void _showHelpDialog() {
     showDialog(
@@ -1560,6 +1578,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _disconnectAll();
       _stopwatchTimer?.cancel();
       _hostConnectedAt.clear();
+      _initialWarmupCounts.clear();
       _messageTimestamps.clear();
       _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Feeds Disconnected', badgeBg: const Color(0xFF00E5FF)));
       setState(() {
@@ -1592,6 +1611,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   void _disconnectSingleHost(String handle) {
     final clean = handle.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt.remove(clean);
+    _initialWarmupCounts.remove(clean);
     _messageTimestamps.remove(clean);
     if (kIsWeb) {
       final ch = _ttWebChannelsMap.remove(clean);
@@ -1622,6 +1642,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     _ttWebChannelsMap.clear();
     _promptedHosts.clear();
     _hostConnectedAt.clear();
+    _initialWarmupCounts.clear();
     _messageTimestamps.clear();
 
     try {
@@ -2428,6 +2449,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Row 1: Platform Selector Pills
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -2441,6 +2463,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const SizedBox(height: 8),
+                  // Row 2: Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2454,6 +2477,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
+                  // Row 3: Utilities
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -2559,6 +2583,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                         tooltip: 'Chat Appearance (Text Size & Color)',
                         onPressed: _showChatAppearanceModal,
                       ),
+                      const SizedBox(width: 6),
                       IconButton(
                         icon: const Icon(Icons.color_lens_outlined, size: 21, color: Colors.grey),
                         tooltip: 'Reset Colors',
@@ -2830,7 +2855,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                       height: 9,
                       child: CircularProgressIndicator(
                         strokeWidth: 1.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.7)),
+                        valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.8)),
                       ),
                     ),
                     const SizedBox(width: 5),
