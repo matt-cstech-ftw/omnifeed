@@ -219,7 +219,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final now = DateTime.now();
     final connectedTime = _hostConnectedAt[clean];
 
-    // Discard the initial 3-second socket backlog burst
     if (connectedTime != null && now.difference(connectedTime).inSeconds < 3) {
       return;
     }
@@ -449,7 +448,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 activeColor: const Color(0xFF00E5FF),
                 checkColor: Colors.black,
                 title: const Text('Hype Meter Gauges', style: TextStyle(fontSize: 12)),
-                subtitle: const Text('0-100 Competition Bar per streamer', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                subtitle: const Text('Engagement bar per active host', style: TextStyle(fontSize: 10, color: Colors.white54)),
                 value: _showVelocity,
                 onChanged: (v) {
                   setState(() => _showVelocity = v ?? true);
@@ -1184,7 +1183,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               const SizedBox(height: 10),
               _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the text icon (tT) in the toolbar to adjust font sizing across all panes and set custom chat colors.'),
               const SizedBox(height: 10),
-              _buildHelpStep('6', 'Hype Meter & Live Competition', 'Displays rolling chat momentum in discrete 0-100% steps per streamer with peak hype animations. Gauges calibrate during a 30s initializing period upon connection.'),
+              _buildHelpStep('6', 'Hype Meter & Live Competition', 'Helps monitor engagement and encourage chat interaction during co-host sessions, paired with a session runtime stopwatch. Both can be toggled off anytime in the stats panel.'),
               const SizedBox(height: 10),
               _buildHelpStep('7', 'Toggle Stats Panel Metrics', 'Tap the slider icon in the Session Stats pane header to toggle the Hype Meter, Session Stopwatch, or Top Supporter widgets on or off.'),
               const SizedBox(height: 10),
@@ -1276,9 +1275,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               const SizedBox(height: 10),
               _buildAboutPoint(Icons.group_add_rounded, 'TikTok Co-Host & Battle Detection', 'Automatically detects rival anchors and co-hosts during TikTok Live sessions, allowing you to merge their live feeds with custom color coding.'),
               const SizedBox(height: 10),
-              _buildAboutPoint(Icons.speed_rounded, 'Hype Meter & Stopwatch', 'Live chat velocity meters scale by 10% steps to drive co-host battle engagement, paired with an automated session runtime stopwatch.'),
-              const SizedBox(height: 10),
-              _buildAboutPoint(Icons.tune_rounded, 'Customizable HUD Toggles', 'Prefer a minimalist view? Use the settings toggle icon inside Session Stats to show or hide the Hype Meter, Stopwatch, or Top Supporter readouts anytime.'),
+              _buildAboutPoint(Icons.speed_rounded, 'Hype Meter & Stopwatch', 'Helps to keep an eye on engagement and encourage chatting during co-host sessions, paired with an automated session runtime stopwatch. Both can easily be toggled off in the stats panel if desired.'),
               const SizedBox(height: 10),
               _buildAboutPoint(Icons.devices_rounded, 'Second-Screen HUD', 'Designed to run cleanly on a phone, tablet, or secondary monitor so you can easily read chat, moderate, and engage without cluttering your main broadcast display.'),
               const SizedBox(height: 10),
@@ -2113,7 +2110,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: ChangeHostModalAlignment.spaceBetween,
                     children: [
                       const Text('Manage TikTok Co-Hosts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
@@ -2696,7 +2693,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: _chatFontSize,
-                                color: isSys ? Colors.white : ev.badgeBg,
+                                color: Colors.white,
                               ),
                             ),
                             Text(
@@ -3242,4 +3239,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       ),
     );
   }
+}
+
+class ChangeHostModalAlignment {
+  static const MainAxisAlignment spaceBetween = MainAxisAlignment.spaceBetween;
 }
