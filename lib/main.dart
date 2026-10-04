@@ -127,12 +127,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final Set<String> _promptedHosts = {};
   final Map<String, int> _gifterScores = {};
 
-  // Velocity Tracking & Stopwatch
+  // Per-stream join tracking & rolling timestamps
+  final Map<String, DateTime> _hostConnectedAt = {};
   final Map<String, List<DateTime>> _messageTimestamps = {};
   Timer? _velocityTimer;
   Timer? _stopwatchTimer;
   int _sessionSeconds = 0;
-  DateTime? _connectedAt;
 
   // Stats Visibility Toggles
   bool _showVelocity = true;
@@ -177,7 +177,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _hypeController, curve: Curves.easeInOut),
     );
 
-    _velocityTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // Run rolling check every 3 seconds to preserve resources
+    _velocityTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       _pruneOldTimestamps();
       if (mounted) setState(() {});
     });
@@ -204,13 +205,30 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  void _markHostConnected(String key) {
+    final clean = key.toLowerCase().replaceAll('@', '').trim();
+    _hostConnectedAt[clean] = DateTime.now();
+    _messageTimestamps[clean] = [];
+  }
+
+  bool _isHostCalibrating(String key) {
+    final clean = key.toLowerCase().replaceAll('@', '').trim();
+    final connectedTime = _hostConnectedAt[clean];
+    if (connectedTime == null) return true;
+    return DateTime.now().difference(connectedTime).inSeconds < 60;
+  }
+
   void _recordMessageForVelocity(String key) {
+    final clean = key.toLowerCase().replaceAll('@', '').trim();
     final now = DateTime.now();
-    // Ignore initial chat burst within first 4 seconds of connecting
-    if (_connectedAt != null && now.difference(_connectedAt!).inSeconds < 4) {
+
+    // Ignore messages during the 60-second warmup calibration
+    final connectedTime = _hostConnectedAt[clean];
+    if (connectedTime != null && now.difference(connectedTime).inSeconds < 60) {
       return;
     }
-    _messageTimestamps.putIfAbsent(key, () => []).add(now);
+
+    _messageTimestamps.putIfAbsent(clean, () => []).add(now);
   }
 
   void _pruneOldTimestamps() {
@@ -221,7 +239,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   int _getVelocityFor(String key) {
-    return _messageTimestamps[key]?.length ?? 0;
+    final clean = key.toLowerCase().replaceAll('@', '').trim();
+    return _messageTimestamps[clean]?.length ?? 0;
   }
 
   int _getScaledVelocityStep(int count) {
@@ -972,7 +991,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ],
           ),
           child: Column(
-            mainAxisSize: minAxisSize(),
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1125,8 +1144,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       ),
     );
   }
-
-  MainAxisSize minAxisSize() => MainAxisSize.min;
 
   void _showHelpDialog() {
     showDialog(
@@ -1542,7 +1559,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (_isConnected) {
       _disconnectAll();
       _stopwatchTimer?.cancel();
-      _connectedAt = null;
+      _hostConnectedAt.clear();
+      _messageTimestamps.clear();
       _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Feeds Disconnected', badgeBg: const Color(0xFF00E5FF)));
       setState(() {
         _isConnected = false;
@@ -1559,7 +1577,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _statusText = 'Connected';
       _isMenuExpanded = false;
       _sessionSeconds = 0;
-      _connectedAt = DateTime.now();
     });
 
     _stopwatchTimer?.cancel();
@@ -1574,6 +1591,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   void _disconnectSingleHost(String handle) {
     final clean = handle.toLowerCase().replaceAll('@', '').trim();
+    _hostConnectedAt.remove(clean);
+    _messageTimestamps.remove(clean);
     if (kIsWeb) {
       final ch = _ttWebChannelsMap.remove(clean);
       try {
@@ -1602,6 +1621,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     }
     _ttWebChannelsMap.clear();
     _promptedHosts.clear();
+    _hostConnectedAt.clear();
+    _messageTimestamps.clear();
 
     try {
       _twitchChannel?.sink.close();
@@ -1661,6 +1682,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _getColorForHost(cleanHandle);
     });
 
+    _markHostConnected(cleanHandle);
+
     if (kIsWeb) {
       _connectTikTokWebRelay(cleanHandle);
       return;
@@ -1671,6 +1694,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _ttClientsMap[cleanHandle.toLowerCase()] = client;
 
       client.on(EventType.connected, (evt) {
+        _markHostConnected(cleanHandle);
         _addEvent(StreamMessage(
           platform: 'SYS',
           user: 'System',
@@ -1727,6 +1751,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final cleanHandle = handle.replaceAll('@', '').trim();
     final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws');
 
+    _markHostConnected(cleanHandle);
+
     _addEvent(StreamMessage(
       platform: 'SYS',
       user: 'System',
@@ -1745,6 +1771,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         final event = data['event'];
 
         if (event == 'connected') {
+          _markHostConnected(cleanHandle);
           _addEvent(StreamMessage(
             platform: 'SYS',
             user: 'System',
@@ -1841,6 +1868,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           }
         }
         _getColorForHost(prim);
+        _markHostConnected(prim);
       }
 
       if (kIsWeb) {
@@ -1849,6 +1877,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         }
       } else {
         for (final handle in _ttHosts) {
+          _markHostConnected(handle);
           runZonedGuarded(() async {
             final client = TikTokLiveClient(handle);
             _ttClientsMap[handle.toLowerCase()] = client;
@@ -1856,6 +1885,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connecting to @$handle...', badgeBg: const Color(0xFF00E5FF)));
 
             client.on(EventType.connected, (evt) {
+              _markHostConnected(handle);
               _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to @$handle', badgeBg: const Color(0xFF00E5FF), host: handle));
             });
 
@@ -1916,6 +1946,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (_enabled['TW']!) {
       final user = _twInput.text.trim().toLowerCase();
       if (user.isNotEmpty) {
+        _markHostConnected('Twitch');
         try {
           _twitchChannel = WebSocketChannel.connect(Uri.parse('wss://irc-ws.chat.twitch.tv:443'));
           _twitchChannel!.sink.add('CAP REQ :twitch.tv/tags twitch.tv/commands');
@@ -1956,6 +1987,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (_enabled['KC']!) {
       final kickSlug = _kcInput.text.trim().toLowerCase();
       if (kickSlug.isNotEmpty) {
+        _markHostConnected('Kick');
         _connectKick(kickSlug);
       }
     }
@@ -1964,6 +1996,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (_enabled['YT']!) {
       final ytId = _ytInput.text.trim();
       if (ytId.isNotEmpty) {
+        _markHostConnected('YouTube');
         _startYTPolling(ytId);
       }
     }
@@ -2395,7 +2428,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platform Selector Pills
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -2409,7 +2441,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Row 2: Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2423,7 +2454,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
-                  // Row 3: Utilities
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -2769,9 +2799,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildVelocityGaugeItem(String label, Color color) {
-    final rawCount = _getVelocityFor(label);
+    final clean = label.toLowerCase().replaceAll('@', '').trim();
+    final isCalibrating = _isHostCalibrating(clean);
+    final rawCount = _getVelocityFor(clean);
     final step = _getScaledVelocityStep(rawCount);
-    final isHype = step >= 100;
+    final isHype = step >= 100 && !isCalibrating;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -2789,23 +2821,47 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   color: color,
                 ),
               ),
-              Row(
-                children: [
-                  if (isHype)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4.0),
-                      child: Text('🔥', style: TextStyle(fontSize: 10)),
+              if (isCalibrating)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 9,
+                      height: 9,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.7)),
+                      ),
                     ),
-                  Text(
-                    '$step%',
-                    style: TextStyle(
-                      fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0),
-                      color: isHype ? Colors.white : Colors.white70,
-                      fontWeight: isHype ? FontWeight.bold : FontWeight.normal,
+                    const SizedBox(width: 5),
+                    Text(
+                      'Calculating...',
+                      style: TextStyle(
+                        fontSize: (_chatFontSize * 0.8).clamp(8.0, 13.0),
+                        color: Colors.white54,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    if (isHype)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4.0),
+                        child: Text('🔥', style: TextStyle(fontSize: 10)),
+                      ),
+                    Text(
+                      '$step%',
+                      style: TextStyle(
+                        fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0),
+                        color: isHype ? Colors.white : Colors.white70,
+                        fontWeight: isHype ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
           const SizedBox(height: 3),
@@ -2831,16 +2887,23 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                       ),
                   ],
                 ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: (step / 100).clamp(0.0, 1.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isHype ? color : color.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                  ),
-                ),
+                child: isCalibrating
+                    ? Container(
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      )
+                    : FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: (step / 100).clamp(0.0, 1.0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isHype ? color : color.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
               );
             },
           ),
@@ -2850,7 +2913,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildStatsPane(String topSupporter) {
-    // Collect active streamers for velocity competition
     final List<MapEntry<String, Color>> activeStreams = [];
     if (_enabled['TT']!) {
       for (final h in _ttHosts) {
