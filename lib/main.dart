@@ -132,6 +132,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   Timer? _velocityTimer;
   Timer? _stopwatchTimer;
   int _sessionSeconds = 0;
+  DateTime? _connectedAt;
 
   // Stats Visibility Toggles
   bool _showVelocity = true;
@@ -205,6 +206,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   void _recordMessageForVelocity(String key) {
     final now = DateTime.now();
+    // Ignore initial chat burst within first 4 seconds of connecting
+    if (_connectedAt != null && now.difference(_connectedAt!).inSeconds < 4) {
+      return;
+    }
     _messageTimestamps.putIfAbsent(key, () => []).add(now);
   }
 
@@ -428,7 +433,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 dense: true,
                 activeColor: const Color(0xFF00E5FF),
                 checkColor: Colors.black,
-                title: const Text('Chat Velocity Gauges', style: TextStyle(fontSize: 12)),
+                title: const Text('Hype Meter Gauges', style: TextStyle(fontSize: 12)),
                 subtitle: const Text('0-100 Competition Bar per streamer', style: TextStyle(fontSize: 10, color: Colors.white54)),
                 value: _showVelocity,
                 onChanged: (v) {
@@ -967,7 +972,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ],
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: minAxisSize(),
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1120,6 +1125,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       ),
     );
   }
+
+  MainAxisSize minAxisSize() => MainAxisSize.min;
 
   void _showHelpDialog() {
     showDialog(
@@ -1535,6 +1542,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (_isConnected) {
       _disconnectAll();
       _stopwatchTimer?.cancel();
+      _connectedAt = null;
       _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Feeds Disconnected', badgeBg: const Color(0xFF00E5FF)));
       setState(() {
         _isConnected = false;
@@ -1551,6 +1559,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _statusText = 'Connected';
       _isMenuExpanded = false;
       _sessionSeconds = 0;
+      _connectedAt = DateTime.now();
     });
 
     _stopwatchTimer?.cancel();
@@ -2386,6 +2395,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Row 1: Platform Selector Pills
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -2399,6 +2409,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const SizedBox(height: 8),
+                  // Row 2: Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2412,6 +2423,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
+                  // Row 3: Utilities
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -2650,7 +2662,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: _chatFontSize,
-                                color: ev.badgeBg,
+                                color: isSys ? Colors.white : ev.badgeBg,
                               ),
                             ),
                             Text(
@@ -2782,10 +2794,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   if (isHype)
                     const Padding(
                       padding: EdgeInsets.only(right: 4.0),
-                      child: Text('🔥 HYPE', style: TextStyle(color: Colors.amberAccent, fontSize: 9.5, fontWeight: FontWeight.w900)),
+                      child: Text('🔥', style: TextStyle(fontSize: 10)),
                     ),
                   Text(
-                    '$step% ($rawCount m/m)',
+                    '$step%',
                     style: TextStyle(
                       fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0),
                       color: isHype ? Colors.white : Colors.white70,
@@ -2924,7 +2936,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             if (_showVelocity && activeStreams.isNotEmpty) ...[
               const Divider(height: 16),
               Text(
-                'CHAT VELOCITY (0-100)',
+                'HYPE METER',
                 style: TextStyle(fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0), fontWeight: FontWeight.bold, color: Colors.grey),
               ),
               const SizedBox(height: 6),
