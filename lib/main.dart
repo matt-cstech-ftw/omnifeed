@@ -641,7 +641,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('omnifeed_agreement_accepted', true);
                 }
-                Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text(
                 'Agree & Continue',
@@ -790,7 +790,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
             onPressed: () {
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
               _showSupportModal();
             },
             child: const Row(
@@ -849,7 +849,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
             onPressed: () async {
               final key = entry.text.trim();
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
               if (key == '#testcapacity') {
                 _showAtCapacityModal();
                 return;
@@ -1070,7 +1070,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         ),
                         onPressed: () {
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
                           _launchDonationUrl();
                         },
                         child: Row(
@@ -1109,7 +1109,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         ),
                         onPressed: () {
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
                           _launchDonationUrl();
                         },
                         child: const Row(
@@ -1142,7 +1142,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         ),
                         onPressed: () {
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
                           _launchDonationUrl();
                         },
                         child: const Text(
@@ -1523,14 +1523,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               setState(() => _colors[platformKey] = _factoryColors[platformKey]!);
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Reset Default'),
           ),
           ElevatedButton(
             onPressed: () {
               setState(() => _colors[platformKey] = pickerColor);
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Apply'),
           ),
@@ -1554,7 +1554,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             onPressed: () {
               setState(() => _hostColors.remove(clean));
               onUpdate();
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Reset Default'),
           ),
@@ -1562,7 +1562,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             onPressed: () {
               setState(() => _hostColors[clean] = pickerColor);
               onUpdate();
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Apply'),
           ),
@@ -1684,7 +1684,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
             onPressed: () {
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
               _attachSingleTikTokHost(cohostHandle);
             },
             child: const Text('Add Chat', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
