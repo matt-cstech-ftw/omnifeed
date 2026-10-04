@@ -112,6 +112,8 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   ];
 
   static const Color _neonPink = Color(0xFFFF06B5);
+  static const Color _cyanAccent = Color(0xFF00E5FF);
+  static const Color _cutoutBg = Color(0xFF161620);
 
   double _chatFontSize = 11.0;
   Color _chatTextColor = Colors.white;
@@ -2095,20 +2097,20 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
   Widget _buildConnectButton({bool isDesktop = false}) {
     return InkWell(
       onTap: _toggleConnection,
-      borderRadius: BorderRadius.circular(5),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
         height: isDesktop ? 40 : 36,
         padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 13),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: _isConnected ? _neonPink : Colors.transparent,
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: _neonPink, width: 1.2),
+          color: _isConnected ? _cyanAccent : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: _cyanAccent, width: 1.2),
           boxShadow: [
             BoxShadow(
-              color: _neonPink.withValues(alpha: _isConnected ? 0.35 : 0.15),
-              blurRadius: 6,
-              spreadRadius: 0.5,
+              color: _cyanAccent.withValues(alpha: _isConnected ? 0.35 : 0.15),
+              blurRadius: 8,
+              spreadRadius: 1,
             ),
           ],
         ),
@@ -2116,8 +2118,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           _isConnected ? 'Disconnect' : 'Connect',
           style: TextStyle(
             fontSize: isDesktop ? 13 : 11,
-            fontWeight: FontWeight.bold,
-            color: _isConnected ? Colors.transparent : _neonPink,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.4,
+            color: _isConnected ? _cutoutBg : _cyanAccent,
           ),
         ),
       ),
@@ -2223,7 +2226,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platform Selector Pills
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -2237,7 +2239,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Row 2: Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2251,7 +2252,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 8, color: Color(0xFF242432)),
-                  // Row 3: Utilities
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -2284,7 +2284,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                       ),
                     ],
                   ),
-                  // Row 4: Help & Info
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -2317,7 +2316,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platforms + Active Inputs + Connect
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2346,7 +2344,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 6),
                   const Divider(height: 10, color: Color(0xFF242432)),
-                  // Row 2: Utilities + Badges
                   Row(
                     children: [
                       IconButton(
@@ -2360,7 +2357,6 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
                         tooltip: 'Chat Appearance (Text Size & Color)',
                         onPressed: _showChatAppearanceModal,
                       ),
-                      const SizedBox(width: 6),
                       IconButton(
                         icon: const Icon(Icons.color_lens_outlined, size: 21, color: Colors.grey),
                         tooltip: 'Reset Colors',
@@ -2692,18 +2688,21 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
     final active = _enabled[key]!;
     return InkWell(
       onTap: () => setState(() => _enabled[key] = !active),
-      borderRadius: BorderRadius.circular(5),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8, vertical: isDesktop ? 7 : 5),
         decoration: BoxDecoration(
           color: active ? _neonPink : Colors.transparent,
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: _neonPink, width: 1.2),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: _neonPink,
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
-              color: _neonPink.withValues(alpha: active ? 0.35 : 0.1),
-              blurRadius: 6,
-              spreadRadius: 0.5,
+              color: _neonPink.withValues(alpha: active ? 0.35 : 0.12),
+              blurRadius: 8,
+              spreadRadius: 1,
             ),
           ],
         ),
@@ -2711,8 +2710,9 @@ class _HudScreenState extends State<HudScreen> with SingleTickerProviderStateMix
           label,
           style: TextStyle(
             fontSize: isDesktop ? 12 : 10,
-            fontWeight: FontWeight.bold,
-            color: active ? Colors.transparent : _neonPink,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.3,
+            color: active ? _cutoutBg : _neonPink,
           ),
         ),
       ),
