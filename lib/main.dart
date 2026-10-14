@@ -1907,10 +1907,32 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             });
             _addEvent(StreamMessage(
               platform: 'SYS',
-              user: 'System',
+              user: 'Blocked',
               text: msg,
-              badgeBg: Colors.orangeAccent,
+              badgeBg: Colors.redAccent,
             ));
+
+            // Immediately reset UI if no active streams are running
+            final bool hasOtherTikTok = _ttWebChannelsMap.isNotEmpty || _ttClientsMap.isNotEmpty;
+            final bool hasOtherFeeds = _twitchChannel != null || _kickChannel != null || _ytTimer != null;
+
+            if (!hasOtherTikTok && !hasOtherFeeds) {
+              _stopwatchTimer?.cancel();
+              setState(() {
+                _isConnected = false;
+                _statusText = 'Opted Out';
+                _sessionSeconds = 0;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(msg, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    backgroundColor: Colors.redAccent.shade700,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              }
+            }
           } else if (code == 503 || msg.contains('capacity')) {
             _showAtCapacityModal();
             _addEvent(StreamMessage(
@@ -2532,7 +2554,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: ChangeHostModalAlignment.spaceBetween,
                     children: [
                       _buildTogglePill('TT', 'TikTok', isDesktop: false),
                       const SizedBox(width: 6),
