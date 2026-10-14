@@ -561,8 +561,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 10),
                   _buildAgreementPoint(
                     icon: Icons.alt_route_rounded,
-                    title: '3. Platform Independence',
-                    description: 'OmniFeed acts strictly as an external viewer and listener. We are not affiliated with, sponsored by, or endorsed by TikTok, Twitch, Kick, or YouTube. Your broadcasts remain subject to each platform’s rules.',
+                    title: '3. Platform Independence & Creator Opt-Out',
+                    description: 'OmniFeed acts strictly as an external viewer and listener. Creators who prefer to exclude their channels from public aggregation can request exclusion at https://omnifeed-relay.onrender.com/optout.',
                   ),
                   const SizedBox(height: 10),
                   _buildAgreementPoint(
@@ -895,6 +895,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final streams = data['active_tiktok_streams'] ?? 0;
     final cached = data['cached_user_ids'] ?? 0;
     final handles = (data['tracked_handles'] as List? ?? []);
+    final blocked = (data['blocked_creators'] as List? ?? []);
 
     showDialog(
       context: context,
@@ -913,30 +914,33 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         ),
         content: SizedBox(
           width: 320,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildStatRow('Active Web Clients:', '$clients'),
-              _buildStatRow('Active TikTok Streams:', '$streams'),
-              _buildStatRow('Cached User IDs:', '$cached'),
-              const Divider(height: 18, color: Color(0xFF2E2E3D)),
-              const Text('Active Host Streams:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-              const SizedBox(height: 6),
-              if (handles.isEmpty)
-                const Text('No active streams connected', style: TextStyle(fontSize: 11, color: Colors.white54))
-              else
-                ...handles.map((h) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('@$h', style: const TextStyle(fontSize: 12, color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
-                      const Text('Live Tracking', style: TextStyle(fontSize: 10, color: Colors.greenAccent)),
-                    ],
-                  ),
-                )),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatRow('Active Web Clients:', '$clients'),
+                _buildStatRow('Active TikTok Streams:', '$streams'),
+                _buildStatRow('Cached User IDs:', '$cached'),
+                _buildStatRow('Blocked Creators:', '${blocked.length}'),
+                const Divider(height: 18, color: Color(0xFF2E2E3D)),
+                const Text('Active Host Streams:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                const SizedBox(height: 6),
+                if (handles.isEmpty)
+                  const Text('No active streams connected', style: TextStyle(fontSize: 11, color: Colors.white54))
+                else
+                  ...handles.map((h) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('@$h', style: const TextStyle(fontSize: 12, color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
+                        const Text('Live Tracking', style: TextStyle(fontSize: 10, color: Colors.greenAccent)),
+                      ],
+                    ),
+                  )),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -1279,7 +1283,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               const SizedBox(height: 10),
               _buildAboutPoint(Icons.devices_rounded, 'Second-Screen HUD', 'Designed to run cleanly on a phone, tablet, or secondary monitor so you can easily read chat, moderate, and engage without cluttering your main broadcast display.'),
               const SizedBox(height: 10),
-              _buildAboutPoint(Icons.card_giftcard_rounded, 'Live Alerts, Gifts & Session Stats', 'Tracks gifts, diamond values, top session supporters, and system connection events in dedicated real-time panels.'),
+              _buildAboutPoint(Icons.privacy_tip_outlined, 'Creator Opt-Out', 'Streamers who prefer to exclude their channels from public aggregation can request global exclusion anytime at https://omnifeed-relay.onrender.com/optout.'),
               const Divider(height: 24, color: Color(0xFF2A2A38)),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -1815,17 +1819,37 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             }
           }
         } else if (event == 'error') {
-          if (data['code'] == 503 || data['message']?.toString().contains('capacity') == true) {
+          final code = data['code'];
+          final msg = data['message']?.toString() ?? 'Relay Error';
+
+          if (code == 403) {
+            _disconnectSingleHost(cleanHandle);
+            setState(() {
+              _ttHosts.removeWhere((h) => h.toLowerCase() == cleanHandle.toLowerCase());
+            });
+            _addEvent(StreamMessage(
+              platform: 'SYS',
+              user: 'System',
+              text: msg,
+              badgeBg: Colors.orangeAccent,
+            ));
+          } else if (code == 503 || msg.contains('capacity')) {
             _showAtCapacityModal();
+            _addEvent(StreamMessage(
+              platform: 'SYS',
+              user: 'Error',
+              text: 'TT: $msg',
+              badgeBg: Colors.redAccent,
+            ));
           } else {
             _showUpdatingModal();
+            _addEvent(StreamMessage(
+              platform: 'SYS',
+              user: 'Error',
+              text: 'TT: $msg',
+              badgeBg: Colors.redAccent,
+            ));
           }
-          _addEvent(StreamMessage(
-            platform: 'SYS',
-            user: 'Error',
-            text: 'TT: ${data['message']}',
-            badgeBg: Colors.redAccent,
-          ));
         }
       }, onError: (err) {
         final errStr = err.toString();
