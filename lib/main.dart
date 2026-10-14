@@ -307,6 +307,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     await prefs.setString('saved_handle_yt', _ytInput.text.trim());
   }
 
+  Future<void> _launchOptOutUrl() async {
+    final uri = Uri.parse('https://omnifeed-relay.onrender.com/optout');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   void _handleInstallButton() {
     bool launched = false;
     if (kIsWeb) {
@@ -562,7 +569,30 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   _buildAgreementPoint(
                     icon: Icons.alt_route_rounded,
                     title: '3. Platform Independence & Creator Opt-Out',
-                    description: 'OmniFeed acts strictly as an external viewer and listener. Creators who prefer to exclude their channels from public aggregation can request exclusion at https://omnifeed-relay.onrender.com/optout.',
+                    description: 'OmniFeed acts strictly as an external viewer and listener. Streamers who prefer to exclude their channels from public aggregation can submit a global opt-out request anytime.',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 25.0, top: 4.0),
+                    child: InkWell(
+                      onTap: _launchOptOutUrl,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1B2A36),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 0.9),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF00E5FF)),
+                            SizedBox(width: 5),
+                            Text('Submit Creator Opt-Out Request', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10.5, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   _buildAgreementPoint(
@@ -1192,6 +1222,31 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               _buildHelpStep('7', 'Toggle Stats Panel Metrics', 'Tap the slider icon in the Session Stats pane header to toggle the Hype Meter, Session Stopwatch, or Top Supporter widgets on or off.'),
               const SizedBox(height: 10),
               _buildHelpStep('8', 'Go Live', 'Tap CONNECT to aggregate live chats, subscriber badges, alerts, and diamonds simultaneously.'),
+              const SizedBox(height: 10),
+              _buildHelpStep('9', 'Creator Privacy & Global Opt-Out', 'OmniFeed listens solely to open public broadcast telemetry. Streamers who prefer to exclude their channels from public aggregation can submit a removal request anytime.'),
+              Padding(
+                padding: const EdgeInsets.only(left: 31.0, top: 4.0),
+                child: InkWell(
+                  onTap: _launchOptOutUrl,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B2A36),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 0.9),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF00E5FF)),
+                        SizedBox(width: 5),
+                        Text('Submit Creator Opt-Out Request', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10.5, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1283,7 +1338,30 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               const SizedBox(height: 10),
               _buildAboutPoint(Icons.devices_rounded, 'Second-Screen HUD', 'Designed to run cleanly on a phone, tablet, or secondary monitor so you can easily read chat, moderate, and engage without cluttering your main broadcast display.'),
               const SizedBox(height: 10),
-              _buildAboutPoint(Icons.privacy_tip_outlined, 'Creator Opt-Out', 'Streamers who prefer to exclude their channels from public aggregation can request global exclusion anytime at https://omnifeed-relay.onrender.com/optout.'),
+              _buildAboutPoint(Icons.privacy_tip_outlined, 'Creator Opt-Out', 'Streamers who prefer to exclude their channels from public aggregation can request global exclusion at any time.'),
+              Padding(
+                padding: const EdgeInsets.only(left: 26.0, top: 4.0),
+                child: InkWell(
+                  onTap: _launchOptOutUrl,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B2A36),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 0.9),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF00E5FF)),
+                        SizedBox(width: 5),
+                        Text('Submit Creator Opt-Out Request', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10.5, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               const Divider(height: 24, color: Color(0xFF2A2A38)),
               Container(
                 padding: const EdgeInsets.all(10),
