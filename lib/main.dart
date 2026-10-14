@@ -73,7 +73,7 @@ class HudScreen extends StatefulWidget {
 class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final Map<String, bool> _enabled = {
     'TT': true,
-    'TW': true,
+    'TW': false,
     'KC': false,
     'YT': false,
   };
@@ -1912,7 +1912,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               badgeBg: Colors.redAccent,
             ));
 
-            // Immediately reset UI if no active streams are running
             final bool hasOtherTikTok = _ttWebChannelsMap.isNotEmpty || _ttClientsMap.isNotEmpty;
             final bool hasOtherFeeds = _twitchChannel != null || _kickChannel != null || _ytTimer != null;
 
@@ -2234,7 +2233,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 children: [
                   Row(
-                    mainAxisAlignment: ChangeHostModalAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Manage TikTok Co-Hosts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
@@ -2554,7 +2553,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
-                    mainAxisAlignment: ChangeHostModalAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _buildTogglePill('TT', 'TikTok', isDesktop: false),
                       const SizedBox(width: 6),
@@ -2565,19 +2564,18 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                       _buildTogglePill('YT', 'YouTube', isDesktop: false),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ..._buildInputsOnlyList(isDesktop: false),
-                        _buildConnectButton(isDesktop: false),
-                        const SizedBox(width: 4),
-                      ],
-                    ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ..._buildInputsOnlyList(isDesktop: false),
+                      _buildConnectButton(isDesktop: false),
+                    ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   const Divider(height: 8, color: Color(0xFF242432)),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -2712,11 +2710,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   List<Widget> _buildInputsOnlyList({required bool isDesktop}) {
     return [
-      if (_enabled['TT']!) ...[
+      if (_enabled['TT']!)
         _buildInputCard(
           controller: _ttPrimaryInput,
           label: 'TikTok @',
-          width: isDesktop ? 135 : 110,
+          width: isDesktop ? 135 : 120,
           platformKey: 'TT',
           isDesktop: isDesktop,
           extraAction: InkWell(
@@ -2743,20 +2741,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-        SizedBox(width: isDesktop ? 10 : 8),
-      ],
-      if (_enabled['TW']!) ...[
-        _buildInputCard(controller: _twInput, label: 'Twitch', width: isDesktop ? 135 : 110, platformKey: 'TW', isDesktop: isDesktop),
-        SizedBox(width: isDesktop ? 10 : 8),
-      ],
-      if (_enabled['KC']!) ...[
-        _buildInputCard(controller: _kcInput, label: 'Kick', width: isDesktop ? 135 : 110, platformKey: 'KC', isDesktop: isDesktop),
-        SizedBox(width: isDesktop ? 10 : 8),
-      ],
-      if (_enabled['YT']!) ...[
-        _buildInputCard(controller: _ytInput, label: 'YouTube ID', width: isDesktop ? 135 : 110, platformKey: 'YT', isDesktop: isDesktop),
-        SizedBox(width: isDesktop ? 10 : 8),
-      ],
+      if (_enabled['TW']!)
+        _buildInputCard(controller: _twInput, label: 'Twitch', width: isDesktop ? 135 : 120, platformKey: 'TW', isDesktop: isDesktop),
+      if (_enabled['KC']!)
+        _buildInputCard(controller: _kcInput, label: 'Kick', width: isDesktop ? 135 : 120, platformKey: 'KC', isDesktop: isDesktop),
+      if (_enabled['YT']!)
+        _buildInputCard(controller: _ytInput, label: 'YouTube ID', width: isDesktop ? 135 : 120, platformKey: 'YT', isDesktop: isDesktop),
     ];
   }
 
