@@ -48,6 +48,116 @@ class StreamMessage {
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
+/// Custom vector painter for crisp, zero-dependency platform logos (TikTok, Twitch, Kick, YouTube)
+class _PlatformLogoPainter extends CustomPainter {
+  final String platform;
+  final Color color;
+
+  const _PlatformLogoPainter({required this.platform, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    switch (platform) {
+      case 'TT':
+        final strokePaint = Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.17
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..isAntiAlias = true;
+
+        // Vertical stem + bottom left note loop
+        final path = Path()
+          ..moveTo(w * 0.60, h * 0.14)
+          ..lineTo(w * 0.60, h * 0.66)
+          ..arcToPoint(
+            Offset(w * 0.24, h * 0.66),
+            radius: Radius.circular(w * 0.18),
+            clockwise: true,
+          )
+          ..arcToPoint(
+            Offset(w * 0.46, h * 0.49),
+            radius: Radius.circular(w * 0.18),
+            clockwise: true,
+          );
+
+        // Top right flag curve
+        final flagPath = Path()
+          ..moveTo(w * 0.60, h * 0.14)
+          ..quadraticBezierTo(w * 0.64, h * 0.36, w * 0.86, h * 0.38);
+
+        canvas.drawPath(path, strokePaint);
+        canvas.drawPath(flagPath, strokePaint);
+        break;
+
+      case 'TW':
+        // Twitch speech-bubble glitch shape with two eyes punched out
+        final outer = Path()
+          ..moveTo(w * 0.22, h * 0.10)
+          ..lineTo(w * 0.88, h * 0.10)
+          ..lineTo(w * 0.88, h * 0.60)
+          ..lineTo(w * 0.68, h * 0.78)
+          ..lineTo(w * 0.50, h * 0.78)
+          ..lineTo(w * 0.34, h * 0.94)
+          ..lineTo(w * 0.34, h * 0.78)
+          ..lineTo(w * 0.14, h * 0.78)
+          ..lineTo(w * 0.14, h * 0.24)
+          ..close();
+
+        final eyes = Path()
+          ..addRect(Rect.fromLTWH(w * 0.44, h * 0.28, w * 0.10, h * 0.26))
+          ..addRect(Rect.fromLTWH(w * 0.64, h * 0.28, w * 0.10, h * 0.26));
+
+        final combined = Path.combine(PathOperation.difference, outer, eyes);
+        canvas.drawPath(combined, paint);
+        break;
+
+      case 'KC':
+        // Kick blocky geometric 'K'
+        final kPath = Path()
+          // Left vertical bar
+          ..addRect(Rect.fromLTWH(w * 0.16, h * 0.12, w * 0.24, h * 0.76))
+          // Center connector block
+          ..addRect(Rect.fromLTWH(w * 0.40, h * 0.38, w * 0.18, h * 0.24))
+          // Top-right arm
+          ..addRect(Rect.fromLTWH(w * 0.58, h * 0.12, w * 0.26, h * 0.26))
+          // Bottom-right leg
+          ..addRect(Rect.fromLTWH(w * 0.58, h * 0.62, w * 0.26, h * 0.26));
+        canvas.drawPath(kPath, paint);
+        break;
+
+      case 'YT':
+        // YouTube rounded screen with center play triangle punched out
+        final rrect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.08, h * 0.18, w * 0.84, h * 0.64),
+          Radius.circular(w * 0.18),
+        );
+        final outer = Path()..addRRect(rrect);
+        final play = Path()
+          ..moveTo(w * 0.41, h * 0.33)
+          ..lineTo(w * 0.67, h * 0.50)
+          ..lineTo(w * 0.41, h * 0.67)
+          ..close();
+        final combined = Path.combine(PathOperation.difference, outer, play);
+        canvas.drawPath(combined, paint);
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PlatformLogoPainter oldDelegate) {
+    return oldDelegate.platform != platform || oldDelegate.color != color;
+  }
+}
+
 class OmniFeedApp extends StatelessWidget {
   const OmniFeedApp({super.key});
 
@@ -462,7 +572,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 contentPadding: EdgeInsets.zero,
                 activeColor: _cyanAccent,
                 title: const Text('Hype Meter Gauges', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                subtitle: const Text('Real-time rolling 30s velocity per active host', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                subtitle: const Text('Real-time engagement bar per active host', style: TextStyle(fontSize: 11, color: Colors.white54)),
                 value: _showVelocity,
                 onChanged: (v) {
                   setState(() => _showVelocity = v);
@@ -1124,9 +1234,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 const SizedBox(height: 10),
                 _buildHelpStep('4', 'Automatic Co-Host / Battle Detection', 'When linked anchors join a TikTok box or battle, an instant prompt allows you to merge their live chat with one tap.'),
                 const SizedBox(height: 10),
-                _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the Typography (tT) icon in the command drawer to scale font size across all panes and customize text/username colors.'),
+                _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the Appearance button in the command drawer to scale font size across all panes and customize text/username colors.'),
                 const SizedBox(height: 10),
-                _buildHelpStep('6', 'Hype Meter & Live Competition', 'Monitors 30-second rolling chat velocity across all connected hosts alongside a live session runtime stopwatch.'),
+                _buildHelpStep('6', 'Hype Meter & Live Competition', 'Monitors live audience engagement across all connected hosts alongside a session runtime stopwatch.'),
                 const SizedBox(height: 10),
                 _buildHelpStep('7', 'Creator Privacy & Global Opt-Out', 'OmniFeed listens solely to open public broadcast telemetry. Streamers who prefer to exclude their channels can submit a removal request anytime.'),
                 Padding(
@@ -1209,7 +1319,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 _buildAgreementPoint(
                   icon: Icons.speed_rounded,
                   title: 'Hype Meter & Stopwatch',
-                  description: 'Tracks rolling audience velocity per host to gamify chat engagement during co-host battles, paired with an automated session runtime stopwatch.',
+                  description: 'Tracks live audience engagement per host to gamify chat interaction during co-host battles, paired with an automated session runtime stopwatch.',
                 ),
                 const SizedBox(height: 10),
                 _buildAgreementPoint(
@@ -1241,7 +1351,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Enjoying OmniFeed? Tap the heart icon in the command bar to support ongoing server & feature development!',
+                          'Enjoying OmniFeed? Tap the Support button in the command bar to support ongoing server & feature development!',
                           style: TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.35),
                         ),
                       ),
@@ -1439,12 +1549,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!controller.hasClients) return;
       final pos = controller.position;
-      // Allow user to inspect scrollback unless they are within 140px of the bottom
       if (pos.maxScrollExtent - pos.pixels > 140) return;
 
       final now = DateTime.now();
       if (isChat && now.difference(_lastChatScrollTime).inMilliseconds < 120) {
-        // High-frequency burst: jump directly to avoid overlapping animation jank
         controller.jumpTo(pos.maxScrollExtent);
       } else {
         if (isChat) _lastChatScrollTime = now;
@@ -2105,7 +2213,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   void _addChat(StreamMessage msg) {
     _chat.add(msg);
-    // Batch trim to avoid O(N) array shift on every single message
     if (_chat.length > 300) {
       _chat.removeRange(0, 50);
     }
@@ -2293,17 +2400,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   Widget _buildBrandLogo({bool isDesktop = false}) {
     return InkWell(
       onTap: _onLogoTapped,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 5 : 4),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 5 : 3.5),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF191B26), Color(0xFF12131C)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF2C3044), width: 1),
+          color: const Color(0xFF1B1B24),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF2E2E3D), width: 1),
         ),
         child: RichText(
           text: TextSpan(
@@ -2311,19 +2414,21 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               TextSpan(
                 text: 'OMNI',
                 style: TextStyle(
-                  fontSize: isDesktop ? 16 : 14,
+                  fontFamily: 'Orbitron',
+                  fontSize: isDesktop ? 18 : 15,
                   color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
                 ),
               ),
               TextSpan(
                 text: 'FEED',
                 style: TextStyle(
-                  fontSize: isDesktop ? 16 : 14,
+                  fontFamily: 'Orbitron',
+                  fontSize: isDesktop ? 22 : 19,
                   color: _cyanAccent,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
+                  letterSpacing: 1.0,
                 ),
               ),
             ],
@@ -2397,8 +2502,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         height: isDesktop ? 36 : 34,
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 14),
-        alignment: Alignment.center,
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 13),
         decoration: BoxDecoration(
           color: _isConnected ? const Color(0xFF28121B) : _cyanAccent,
           borderRadius: BorderRadius.circular(8),
@@ -2419,7 +2523,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           children: [
             Icon(
               _isConnected ? Icons.power_settings_new_rounded : Icons.bolt_rounded,
-              size: isDesktop ? 16 : 14,
+              size: isDesktop ? 15 : 14,
               color: _isConnected ? const Color(0xFFFE2C55) : Colors.black,
             ),
             const SizedBox(width: 5),
@@ -2440,7 +2544,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Widget _buildPersistentTopBar({required bool isDesktop}) {
     return Container(
-      height: isDesktop ? 48 : 44,
+      height: isDesktop ? 50 : 46,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: const BoxDecoration(
         color: Color(0xFF0E0F16),
@@ -2578,7 +2682,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platform Toggles + Inputs + Connect CTA
+                  // Row 1: Platform Toggles + Inputs + Compact Connect CTA
                   Wrap(
                     alignment: WrapAlignment.center,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -2839,14 +2943,27 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               ),
           ],
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: isDesktop ? 11.5 : 10.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.3,
-            color: active ? Colors.white : Colors.white60,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CustomPaint(
+              size: Size(isDesktop ? 12 : 11, isDesktop ? 12 : 11),
+              painter: _PlatformLogoPainter(
+                platform: key,
+                color: active ? Colors.white : Colors.white60,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: isDesktop ? 11.5 : 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.3,
+                color: active ? Colors.white : Colors.white60,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3024,10 +3141,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildFilterChip('TT', 'TT'),
-                      _buildFilterChip('TW', 'TW'),
-                      _buildFilterChip('KC', 'KC'),
-                      _buildFilterChip('YT', 'YT'),
+                      _buildFilterChip('TT', 'TikTok'),
+                      _buildFilterChip('TW', 'Twitch'),
+                      _buildFilterChip('KC', 'Kick'),
+                      _buildFilterChip('YT', 'YouTube'),
                     ],
                   ),
                 ),
@@ -3438,7 +3555,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                         Icon(Icons.local_fire_department_rounded, size: 13, color: _neonPink),
                         SizedBox(width: 4),
                         Text(
-                          'HYPE METER (30S VELOCITY)',
+                          'HYPE METER',
                           style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Colors.white54),
                         ),
                       ],
@@ -3460,35 +3577,37 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildFilterChip(String key, String label) {
+  Widget _buildFilterChip(String key, String tooltipLabel) {
     if (!_enabled[key]!) return const SizedBox.shrink();
     final visible = _chatVisible[key]!;
     final color = _colors[key]!;
 
     return Padding(
       padding: const EdgeInsets.only(left: 5),
-      child: InkWell(
-        onTap: () {
-          setState(() => _chatVisible[key] = !visible);
-          _chatVersion.value++;
-        },
-        borderRadius: BorderRadius.circular(5),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-          decoration: BoxDecoration(
-            color: visible ? color.withValues(alpha: 0.18) : Colors.transparent,
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: visible ? color : Colors.white24,
-              width: 1,
+      child: Tooltip(
+        message: 'Toggle $tooltipLabel Chat',
+        child: InkWell(
+          onTap: () {
+            setState(() => _chatVisible[key] = !visible);
+            _chatVersion.value++;
+          },
+          borderRadius: BorderRadius.circular(5),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: visible ? color.withValues(alpha: 0.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: visible ? color : Colors.white24,
+                width: 1,
+              ),
             ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w900,
-              color: visible ? Colors.white : Colors.white38,
+            child: CustomPaint(
+              size: const Size(11, 11),
+              painter: _PlatformLogoPainter(
+                platform: key,
+                color: visible ? Colors.white : Colors.white38,
+              ),
             ),
           ),
         ),
@@ -3498,6 +3617,25 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Widget _buildBadge(String label, Color color, {bool isOutline = false}) {
     final isDarkText = color.computeLuminance() > 0.55;
+    final fgColor = isOutline ? color : (isDarkText ? Colors.black : Colors.white);
+    final isPlatformLogo = label == 'TT' || label == 'TW' || label == 'KC' || label == 'YT';
+
+    if (isPlatformLogo) {
+      final iconSize = (_chatFontSize - 1).clamp(10.0, 14.0);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: isOutline ? color.withValues(alpha: 0.15) : color,
+          borderRadius: BorderRadius.circular(4),
+          border: isOutline ? Border.all(color: color, width: 1) : null,
+        ),
+        child: CustomPaint(
+          size: Size(iconSize, iconSize),
+          painter: _PlatformLogoPainter(platform: label, color: fgColor),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
       decoration: BoxDecoration(
@@ -3508,7 +3646,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       child: Text(
         label,
         style: TextStyle(
-          color: isOutline ? color : (isDarkText ? Colors.black : Colors.white),
+          color: fgColor,
           fontWeight: FontWeight.w900,
           fontSize: (_chatFontSize - 3).clamp(8.0, 12.0),
           letterSpacing: 0.3,
