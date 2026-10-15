@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop' as js;
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,12 @@ void main() {
 }
 
 enum HudConnectionState { standby, connecting, live }
+
+class _HypeEvent {
+  final DateTime timestamp;
+  final int points;
+  const _HypeEvent(this.timestamp, this.points);
+}
 
 class StreamMessage {
   final int id;
@@ -84,7 +91,6 @@ class _OmniBrandMarkPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
 
-    // 3 flowing S-curve streams converging into the top-right broadcast node
     final wave1 = Path()
       ..moveTo(w * 0.12, h * 0.78)
       ..cubicTo(w * 0.36, h * 0.72, w * 0.34, h * 0.42, w * 0.64, h * 0.34);
@@ -99,7 +105,6 @@ class _OmniBrandMarkPainter extends CustomPainter {
     canvas.drawPath(wave2, bluePaint);
     canvas.drawPath(wave3, violetPaint);
 
-    // Broadcast signal arcs radiating from top-right
     final arcRect1 = Rect.fromCircle(center: Offset(w * 0.66, h * 0.36), radius: w * 0.20);
     final arcRect2 = Rect.fromCircle(center: Offset(w * 0.66, h * 0.36), radius: w * 0.33);
     canvas.drawArc(arcRect1, -1.3, 1.65, false, bluePaint..strokeWidth = w * 0.09);
@@ -108,6 +113,85 @@ class _OmniBrandMarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Custom 20-segment broadcast LED VU-style gauge painter for the Hype Meter
+class _SegmentedHypeBarPainter extends CustomPainter {
+  final double progress; // 0.0 to 1.0
+  final Color baseColor;
+  final bool isCalibrating;
+  final double pulseValue;
+
+  const _SegmentedHypeBarPainter({
+    required this.progress,
+    required this.baseColor,
+    required this.isCalibrating,
+    required this.pulseValue,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const int totalCells = 20;
+    const double gap = 2.5;
+    final double cellWidth = (size.width - (gap * (totalCells - 1))) / totalCells;
+    final double cellHeight = size.height;
+    final Radius corner = const Radius.circular(2.0);
+
+    final inactivePaint = Paint()
+      ..color = const Color(0xFF0A0C12)
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < totalCells; i++) {
+      final double left = i * (cellWidth + gap);
+      final RRect cellRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, 0, cellWidth, cellHeight),
+        corner,
+      );
+
+      if (isCalibrating) {
+        final double wave = (math.sin((pulseValue * math.pi * 2) + (i * 0.4)) + 1) / 2;
+        final calibPaint = Paint()
+          ..color = baseColor.withValues(alpha: 0.08 + (wave * 0.16))
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(cellRect, calibPaint);
+        continue;
+      }
+
+      final double cellThreshold = (i + 1) / totalCells;
+      final double prevThreshold = i / totalCells;
+
+      if (progress >= cellThreshold) {
+        // Fully lit LED cell with subtle intensity ramp toward the top 25%
+        final double t = i / (totalCells - 1);
+        final Color activeColor = t > 0.75
+            ? Color.lerp(baseColor, Colors.white, (t - 0.75) * 1.6)!
+            : Color.lerp(baseColor.withValues(alpha: 0.72), baseColor, t / 0.75)!;
+
+        final litPaint = Paint()
+          ..color = activeColor
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(cellRect, litPaint);
+      } else if (progress > prevThreshold) {
+        // Partially lit transition cell
+        final double partial = (progress - prevThreshold) * totalCells;
+        canvas.drawRRect(cellRect, inactivePaint);
+        final partialPaint = Paint()
+          ..color = baseColor.withValues(alpha: 0.35 + (0.65 * partial))
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(cellRect, partialPaint);
+      } else {
+        canvas.drawRRect(cellRect, inactivePaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SegmentedHypeBarPainter old) {
+    return old.progress != progress ||
+        old.baseColor != baseColor ||
+        old.isCalibrating != isCalibrating ||
+        old.pulseValue != pulseValue;
+  }
 }
 
 /// Custom vector painter for crisp platform logos (TikTok, Twitch, Kick, YouTube)
@@ -323,14 +407,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     r'"liveChatTextMessageRenderer":\{"message":\{"runs":\[\{"text":"(.*?)"\}\]\},"authorName":\{"simpleText":"(.*?)"\}',
   );
 
-  // Cohesive Omni-Spectrum Palette (Derived from logo.png)
+  // Cohesive Omni-Spectrum Palette
   static const Color _bgDeep = Color(0xFF07080C);
   static const Color _surfaceCard = Color(0xFF0E1017);
   static const Color _surfaceElevated = Color(0xFF151822);
   static const Color _borderSubtle = Color(0xFF1E2230);
   static const Color _cyanAccent = Color(0xFF00E5FF);
   static const Color _azureAccent = Color(0xFF0077FF);
-  static const Color _violetAccent = Color(0xFF8B3DFF);
+  static const Color _heartRed = Color(0xFFFE2C55);
   static const Color _emeraldLive = Color(0xFF00E676);
   static const Color _amberConnecting = Color(0xFFFFB300);
 
@@ -400,8 +484,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final Set<String> _pendingFeeds = {};
   final Map<String, Timer> _handshakeTimeouts = {};
 
+  // Weighted Hype Meter state (Chats + Scaled Coins)
   final Map<String, DateTime> _hostConnectedAt = {};
-  final Map<String, List<DateTime>> _messageTimestamps = {};
+  final Map<String, List<_HypeEvent>> _hypeEvents = {};
   Timer? _velocityTimer;
   Timer? _stopwatchTimer;
   DateTime _lastChatScrollTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -412,6 +497,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   late final AnimationController _hypeController;
   late final Animation<double> _hypeAnimation;
+
+  late final AnimationController _emptyLogoPulseController;
+  late final Animation<double> _emptyLogoPulseAnimation;
 
   final TextEditingController _ttPrimaryInput = TextEditingController();
   final TextEditingController _twInput = TextEditingController();
@@ -448,9 +536,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _hypeController, curve: Curves.easeInOut),
     );
 
+    // Slow, calm 2.4-second fade pulse for the empty chat logo
+    _emptyLogoPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+
+    _emptyLogoPulseAnimation = Tween<double>(begin: 0.22, end: 0.92).animate(
+      CurvedAnimation(parent: _emptyLogoPulseController, curve: Curves.easeInOutSine),
+    );
+
     _velocityTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (_connState == HudConnectionState.live && mounted) {
-        _pruneOldTimestamps();
+        _pruneOldHypeEvents();
         _velocityTickNotifier.value++;
       }
     });
@@ -465,6 +563,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   void dispose() {
     _disconnectAll();
     _hypeController.dispose();
+    _emptyLogoPulseController.dispose();
     _velocityTimer?.cancel();
     _stopwatchTimer?.cancel();
     _logoTapTimer?.cancel();
@@ -493,7 +592,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
           side: BorderSide(
-            color: isError ? const Color(0xFFFE2C55) : _cyanAccent,
+            color: isError ? _heartRed : _cyanAccent,
             width: 1,
           ),
         ),
@@ -502,7 +601,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           children: [
             Icon(
               isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-              color: isError ? const Color(0xFFFE2C55) : _cyanAccent,
+              color: isError ? _heartRed : _cyanAccent,
               size: 18,
             ),
             const SizedBox(width: 10),
@@ -551,7 +650,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (velocityKey != null) {
       final vClean = velocityKey.toLowerCase().replaceAll('@', '').trim();
       _hostConnectedAt[vClean] = DateTime.now();
-      _messageTimestamps[vClean] = [];
+      _hypeEvents[vClean] = [];
     }
 
     if (_connState != HudConnectionState.live && mounted) {
@@ -601,42 +700,79 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // WEIGHTED HYPE METER ENGINE (CHAT + GIFT COINS)
+  // ---------------------------------------------------------------------------
+
   bool _isHostCalibrating(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     final connectedTime = _hostConnectedAt[clean];
     if (connectedTime == null) return true;
-    return DateTime.now().difference(connectedTime).inSeconds < 30;
+    return DateTime.now().difference(connectedTime).inSeconds < 15;
   }
 
+  /// +5% Hype per chat message
   void _recordMessageForVelocity(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     final now = DateTime.now();
     final connectedTime = _hostConnectedAt[clean];
 
+    // Ignore initial connection backlog burst for first 3 seconds
     if (connectedTime != null && now.difference(connectedTime).inSeconds < 3) {
       return;
     }
 
-    _messageTimestamps.putIfAbsent(clean, () => []).add(now);
+    _hypeEvents.putIfAbsent(clean, () => []).add(_HypeEvent(now, 5));
+    _velocityTickNotifier.value++;
   }
 
-  void _pruneOldTimestamps() {
+  /// Logarithmic coin-to-hype scaling: 1 coin = +5%, 1000+ coins = +100% (Max Hype)
+  static int _calculateGiftHypePoints(int coins) {
+    if (coins <= 0) return 0;
+    if (coins == 1) return 5;
+    if (coins >= 1000) return 100;
+    final double ratio = math.log(coins) / math.log(1000);
+    return (5 + (95 * ratio)).round().clamp(5, 100);
+  }
+
+  void _recordGiftForVelocity(String key, int totalCoins) {
+    final clean = key.toLowerCase().replaceAll('@', '').trim();
+    final points = _calculateGiftHypePoints(totalCoins);
+    if (points <= 0) return;
+
+    _hypeEvents.putIfAbsent(clean, () => []).add(_HypeEvent(DateTime.now(), points));
+    _velocityTickNotifier.value++;
+  }
+
+  void _pruneOldHypeEvents() {
     final cutoff = DateTime.now().subtract(const Duration(seconds: 30));
-    for (final list in _messageTimestamps.values) {
-      list.removeWhere((t) => t.isBefore(cutoff));
+    for (final list in _hypeEvents.values) {
+      list.removeWhere((e) => e.timestamp.isBefore(cutoff));
     }
   }
 
-  int _getVelocityFor(String key) {
+  int _getHypePercentFor(String key) {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     if (_isHostCalibrating(clean)) return 0;
-    return _messageTimestamps[clean]?.length ?? 0;
+    final list = _hypeEvents[clean];
+    if (list == null || list.isEmpty) return 0;
+
+    final cutoff = DateTime.now().subtract(const Duration(seconds: 30));
+    int sum = 0;
+    for (final ev in list) {
+      if (ev.timestamp.isAfter(cutoff)) {
+        sum += ev.points;
+      }
+    }
+    return sum.clamp(0, 100);
   }
 
-  int _getScaledVelocityStep(int countIn30s) {
-    if (countIn30s <= 0) return 0;
-    if (countIn30s >= 10) return 100;
-    return countIn30s * 10;
+  String _getHypeTierLabel(int pct) {
+    if (pct >= 100) return '🔥 OVERDRIVE';
+    if (pct >= 70) return 'HEATING';
+    if (pct >= 35) return 'ACTIVE';
+    if (pct > 0) return 'WARMING';
+    return 'IDLE';
   }
 
   String _formatDuration(int totalSeconds) {
@@ -815,7 +951,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 contentPadding: EdgeInsets.zero,
                 activeColor: _cyanAccent,
                 title: const Text('Hype Meter Gauges', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                subtitle: const Text('Real-time engagement bar per active host', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                subtitle: const Text('Chat (+5%) & gift coin velocity per host', style: TextStyle(fontSize: 11, color: Colors.white54)),
                 value: _showVelocity,
                 onChanged: (v) {
                   setState(() => _showVelocity = v);
@@ -1062,11 +1198,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Color(0xFFFE2C55), width: 1.2),
+          side: const BorderSide(color: _heartRed, width: 1.2),
         ),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 24),
+            Icon(Icons.warning_amber_rounded, color: _heartRed, size: 24),
             SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -1081,14 +1217,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             color: const Color(0xFF24151C),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.4), width: 1),
+            border: Border.all(color: _heartRed.withValues(alpha: 0.4), width: 1),
           ),
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
                 padding: EdgeInsets.only(top: 2.0),
-                child: Icon(Icons.favorite_rounded, color: Color(0xFFFE2C55), size: 16),
+                child: Icon(Icons.favorite_rounded, color: _heartRed, size: 16),
               ),
               SizedBox(width: 10),
               Expanded(
@@ -1107,7 +1243,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFE2C55),
+              backgroundColor: _heartRed,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
@@ -1461,7 +1597,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 const SizedBox(height: 10),
                 _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the Appearance button in the command drawer to scale font size across all panes and customize text/username colors.'),
                 const SizedBox(height: 10),
-                _buildHelpStep('6', 'Hype Meter & Live Competition', 'Monitors live audience engagement across all connected hosts alongside a session runtime stopwatch.'),
+                _buildHelpStep('6', 'Hype Meter & Gift Scaling', 'Tracks rolling 30s engagement per host: each chat adds +5% hype, while gifts scale dynamically from +5% (1 coin) up to an instant 100% OVERDRIVE max-out (1,000+ coins).'),
                 const SizedBox(height: 10),
                 _buildHelpStep('7', 'Creator Privacy & Global Opt-Out', 'OmniFeed listens solely to open public broadcast telemetry. Streamers who prefer to exclude their channels can submit a removal request anytime.'),
                 Padding(
@@ -1543,8 +1679,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 const SizedBox(height: 10),
                 _buildAgreementPoint(
                   icon: Icons.speed_rounded,
-                  title: 'Hype Meter & Stopwatch',
-                  description: 'Tracks live audience engagement per host to gamify chat interaction during co-host battles, paired with an automated session runtime stopwatch.',
+                  title: 'Hype Meter & Gift Overdrive',
+                  description: 'Combines live chat velocity (+5%) and logarithmic gift coin scaling (up to 100% instant Overdrive on 1,000+ coin gifts) alongside a live session stopwatch.',
                 ),
                 const SizedBox(height: 10),
                 _buildAgreementPoint(
@@ -1572,7 +1708,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.favorite_rounded, color: _cyanAccent, size: 20),
+                      Icon(Icons.favorite_rounded, color: _heartRed, size: 20),
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -1880,7 +2016,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _disconnectAll();
       _stopwatchTimer?.cancel();
       _hostConnectedAt.clear();
-      _messageTimestamps.clear();
+      _hypeEvents.clear();
       _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'All telemetry feeds disconnected', badgeBg: _cyanAccent));
       setState(() {
         _connState = HudConnectionState.standby;
@@ -1891,7 +2027,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       return;
     }
 
-    // Pre-flight validation: block empty connections
     if (!_hasValidConfiguredInputs()) {
       setState(() => _isMenuExpanded = true);
       _showToast('Please enter at least one channel username or video ID before connecting.');
@@ -1912,7 +2047,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   void _disconnectSingleHost(String handle) {
     final clean = handle.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt.remove(clean);
-    _messageTimestamps.remove(clean);
+    _hypeEvents.remove(clean);
     _handshakeTimeouts.remove('tt:$clean')?.cancel();
     _pendingFeeds.remove('tt:$clean');
     _verifiedFeeds.remove('tt:$clean');
@@ -1956,7 +2091,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     _promptedHosts.clear();
     _ytSeenSignatures.clear();
     _hostConnectedAt.clear();
-    _messageTimestamps.clear();
+    _hypeEvents.clear();
 
     try {
       _twitchChannel?.sink.close();
@@ -2061,8 +2196,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         final giftName = giftMap?['name']?.toString() ?? 'Gift';
         final count = int.tryParse(data?['repeatCount']?.toString() ?? '1') ?? 1;
         final diamondCount = int.tryParse(giftMap?['diamondCount']?.toString() ?? '1') ?? 1;
+        final totalCoins = diamondCount * count;
 
-        _recordGift(sender, diamondCount * count);
+        _recordGift(sender, totalCoins);
+        _recordGiftForVelocity(cleanHandle, totalCoins);
         _addEvent(StreamMessage(
           platform: 'TT',
           user: sender,
@@ -2131,11 +2268,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             roles: [if (data['isMod'] == true) 'MOD'],
           ));
         } else if (event == 'gift') {
-          final count = data['count'] ?? 1;
-          final giftName = data['giftName'] ?? 'Gift';
-          final diamonds = (data['diamondCount'] ?? 1) * count;
-          final recipientHost = data['host']?.toString() ?? cleanHandle;
-          _recordGift(data['user'] ?? 'TikTokUser', diamonds);
+          final int count = int.tryParse(data['count']?.toString() ?? '1') ?? 1;
+          final String giftName = data['giftName']?.toString() ?? 'Gift';
+          final int diamondUnit = int.tryParse(data['diamondCount']?.toString() ?? '1') ?? 1;
+          final int totalDiamonds = diamondUnit * count;
+          final String recipientHost = data['host']?.toString() ?? cleanHandle;
+
+          _recordGift(data['user'] ?? 'TikTokUser', totalDiamonds);
+          _recordGiftForVelocity(recipientHost, totalDiamonds);
           _addEvent(StreamMessage(
             platform: 'TT',
             user: data['user'] ?? 'TikTokUser',
@@ -2907,12 +3047,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           color: isActive ? const Color(0xFF26121A) : null,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isActive ? const Color(0xFFFE2C55).withValues(alpha: 0.8) : _cyanAccent,
+            color: isActive ? _heartRed.withValues(alpha: 0.8) : _cyanAccent,
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: (isActive ? const Color(0xFFFE2C55) : _cyanAccent).withValues(alpha: 0.22),
+              color: (isActive ? _heartRed : _cyanAccent).withValues(alpha: 0.22),
               blurRadius: 10,
             ),
           ],
@@ -2928,7 +3068,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   height: 12,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
+                    valueColor: AlwaysStoppedAnimation<Color>(_heartRed),
                   ),
                 ),
               )
@@ -2938,7 +3078,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 child: Icon(
                   isActive ? Icons.power_settings_new_rounded : Icons.bolt_rounded,
                   size: isDesktop ? 15 : 14,
-                  color: isActive ? const Color(0xFFFE2C55) : Colors.black,
+                  color: isActive ? _heartRed : Colors.black,
                 ),
               ),
             Text(
@@ -2947,7 +3087,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 fontSize: isDesktop ? 11.5 : 10.5,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.6,
-                color: isActive ? const Color(0xFFFE2C55) : Colors.black,
+                color: isActive ? _heartRed : Colors.black,
               ),
             ),
           ],
@@ -3050,7 +3190,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     children: [
                       _buildToolbarIconBtn(
                         icon: Icons.favorite_rounded,
-                        color: _cyanAccent,
+                        color: _heartRed,
                         label: isDesktop ? 'Support' : null,
                         tooltip: 'Support OmniFeed',
                         onTap: _showSupportModal,
@@ -3495,14 +3635,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CustomPaint(
-                          size: const Size(32, 32),
-                          painter: const _OmniBrandMarkPainter(),
+                        RepaintBoundary(
+                          child: FadeTransition(
+                            opacity: _emptyLogoPulseAnimation,
+                            child: const CustomPaint(
+                              size: Size(36, 36),
+                              painter: _OmniBrandMarkPainter(),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         const Text(
-                          'Connect a live stream to begin ingesting chat',
-                          style: TextStyle(fontSize: 12, color: Colors.white30, fontWeight: FontWeight.w500),
+                          'Connect a live stream above to start',
+                          style: TextStyle(fontSize: 12, color: Colors.white38, fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -3611,120 +3756,132 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Segmented Broadcast VU-Style Hype Meter Card
   Widget _buildVelocityGaugeItem(String label, Color color) {
     final clean = label.toLowerCase().replaceAll('@', '').trim();
     final isCalibrating = _isHostCalibrating(clean);
-    final rawCount = _getVelocityFor(clean);
-    final step = _getScaledVelocityStep(rawCount);
+    final step = _getHypePercentFor(clean);
     final isHype = step >= 100 && !isCalibrating;
+    final tierLabel = _getHypeTierLabel(step);
 
-    Widget gaugeBar = Container(
-      height: 8,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: _bgDeep,
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: _borderSubtle, width: 0.8),
-      ),
-      child: isCalibrating
-          ? LinearProgressIndicator(
-              backgroundColor: Colors.transparent,
-              valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.25)),
-              borderRadius: BorderRadius.circular(5),
-            )
-          : AnimatedFractionallySizedBox(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.centerLeft,
-              widthFactor: (step / 100).clamp(0.0, 1.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color.withValues(alpha: 0.65), color],
-                  ),
-                  borderRadius: BorderRadius.circular(5),
-                ),
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _hypeAnimation,
+        builder: (ctx, _) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8.0),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+            decoration: BoxDecoration(
+              color: _surfaceElevated,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: isHype
+                    ? color.withValues(alpha: 0.45 + (_hypeAnimation.value * 0.45))
+                    : _borderSubtle,
+                width: isHype ? 1.2 : 1.0,
               ),
-            ),
-    );
-
-    if (isHype) {
-      gaugeBar = RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _hypeAnimation,
-          builder: (ctx, child) {
-            return Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(5),
-                boxShadow: [
+              boxShadow: [
+                if (isHype)
                   BoxShadow(
-                    color: color.withValues(alpha: _hypeAnimation.value * 0.6),
-                    blurRadius: 10,
-                    spreadRadius: 1,
+                    color: color.withValues(alpha: _hypeAnimation.value * 0.28),
+                    blurRadius: 12,
+                    spreadRadius: 0.5,
                   ),
-                ],
-              ),
-              child: child,
-            );
-          },
-          child: gaugeBar,
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  label.startsWith('@') ? label : '@$label',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: (_chatFontSize * 0.88).clamp(9.5, 14.0),
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                ),
-              ),
-              if (isCalibrating)
-                Text(
-                  'Calibrating...',
-                  style: TextStyle(
-                    fontSize: (_chatFontSize * 0.78).clamp(8.5, 12.0),
-                    color: Colors.white38,
-                    fontStyle: FontStyle.italic,
-                  ),
-                )
-              else
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isHype)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 3.0),
-                        child: Text('🔥', style: TextStyle(fontSize: 10)),
-                      ),
-                    Text(
-                      '$step%',
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: (_chatFontSize * 0.85).clamp(9.0, 13.5),
-                        color: isHype ? Colors.white : Colors.white70,
-                        fontWeight: FontWeight.w800,
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 4),
+                        ],
                       ),
                     ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        label.startsWith('@') ? label : '@$label',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: (_chatFontSize * 0.88).clamp(9.5, 13.5),
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (isCalibrating)
+                      Text(
+                        'SYNCING',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          color: color.withValues(alpha: 0.7),
+                        ),
+                      )
+                    else ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: isHype ? color.withValues(alpha: 0.22) : Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(4),
+                          border: isHype ? Border.all(color: color.withValues(alpha: 0.6), width: 0.8) : null,
+                        ),
+                        child: Text(
+                          tierLabel,
+                          style: TextStyle(
+                            fontSize: 8.0,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            color: isHype ? Colors.white : Colors.white54,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$step%',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: (_chatFontSize * 0.88).clamp(9.5, 13.5),
+                          color: isHype ? color : Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          gaugeBar,
-        ],
+                const SizedBox(height: 7),
+                TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0.0, end: (step / 100.0).clamp(0.0, 1.0)),
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, animProgress, _) {
+                    return SizedBox(
+                      height: 10,
+                      width: double.infinity,
+                      child: CustomPaint(
+                        painter: _SegmentedHypeBarPainter(
+                          progress: animProgress,
+                          baseColor: color,
+                          isCalibrating: isCalibrating,
+                          pulseValue: _hypeAnimation.value,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -3956,7 +4113,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Soft translucent tinted glass badge instead of harsh 100%-opacity blocks
   Widget _buildBadge(String label, Color color) {
     final isPlatformLogo = label == 'TT' || label == 'TW' || label == 'KC' || label == 'YT';
 
