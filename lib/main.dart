@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop' as js;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -35,6 +35,7 @@ class StreamMessage {
   final Color badgeBg;
   final String? host;
   final List<String> roles;
+  final DateTime timestamp;
 
   StreamMessage({
     required this.platform,
@@ -43,7 +44,8 @@ class StreamMessage {
     required this.badgeBg,
     this.host,
     this.roles = const [],
-  });
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
 }
 
 class OmniFeedApp extends StatelessWidget {
@@ -54,9 +56,21 @@ class OmniFeedApp extends StatelessWidget {
     return MaterialApp(
       title: 'OmniFeed HUD',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0F0F13),
-        cardColor: const Color(0xFF16161D),
+      theme: ThemeData.dark(useMaterial3: true).copyWith(
+        scaffoldBackgroundColor: const Color(0xFF09090D),
+        cardColor: const Color(0xFF12131A),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF00E5FF),
+          secondary: Color(0xFFFF06B5),
+          surface: Color(0xFF12131A),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: const Color(0xFF14151E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0xFF26293A), width: 1),
+          ),
+        ),
       ),
       home: const HudScreen(),
     );
@@ -71,6 +85,21 @@ class HudScreen extends StatefulWidget {
 }
 
 class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
+  // Pre-compiled Regular Expressions for hot network paths
+  static final RegExp _twitchUserRegex = RegExp(r':(\w+)!');
+  static final RegExp _ytMessageRegex = RegExp(
+    r'"liveChatTextMessageRenderer":\{"message":\{"runs":\[\{"text":"(.*?)"\}\]\},"authorName":\{"simpleText":"(.*?)"\}',
+  );
+
+  // Core Theme Palette
+  static const Color _bgDeep = Color(0xFF09090D);
+  static const Color _surfaceCard = Color(0xFF12131A);
+  static const Color _surfaceElevated = Color(0xFF181A24);
+  static const Color _borderSubtle = Color(0xFF232634);
+  static const Color _neonPink = Color(0xFFFF06B5);
+  static const Color _cyanAccent = Color(0xFF00E5FF);
+  static const Color _emeraldLive = Color(0xFF00E676);
+
   final Map<String, bool> _enabled = {
     'TT': true,
     'TW': false,
@@ -89,56 +118,60 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     'TT': const Color(0xFF25F4EE),
     'TW': const Color(0xFF9146FF),
     'KC': const Color(0xFF53FC18),
-    'YT': const Color(0xFFFF0000),
+    'YT': const Color(0xFFFF0033),
   };
 
   final Map<String, Color> _factoryColors = {
     'TT': const Color(0xFF25F4EE),
     'TW': const Color(0xFF9146FF),
     'KC': const Color(0xFF53FC18),
-    'YT': const Color(0xFFFF0000),
+    'YT': const Color(0xFFFF0033),
   };
 
   final Map<String, Color> _hostColors = {};
-  final List<Color> _hostPalette = [
-    const Color(0xFF00E5FF),
-    const Color(0xFFFF4081),
-    const Color(0xFFFFD600),
-    const Color(0xFF7C4DFF),
-    const Color(0xFF00E676),
-    const Color(0xFFFF6E40),
-    const Color(0xFF40C4FF),
-    const Color(0xFFE040FB),
+  final List<Color> _hostPalette = const [
+    Color(0xFF00E5FF),
+    Color(0xFFFF4081),
+    Color(0xFFFFD600),
+    Color(0xFF7C4DFF),
+    Color(0xFF00E676),
+    Color(0xFFFF6E40),
+    Color(0xFF40C4FF),
+    Color(0xFFE040FB),
   ];
 
-  static const Color _neonPink = Color(0xFFFF06B5);
-  static const Color _cyanAccent = Color(0xFF00E5FF);
-  static const Color _cutoutBg = Color(0xFF161620);
-
-  double _chatFontSize = 11.0;
-  Color _chatTextColor = Colors.white;
+  double _chatFontSize = 12.0;
+  Color _chatTextColor = const Color(0xFFEFF1F5);
   Color _chatUserColor = Colors.white;
-  final Color _defaultChatTextColor = Colors.white;
+  final Color _defaultChatTextColor = const Color(0xFFEFF1F5);
   final Color _defaultChatUserColor = Colors.white;
 
+  // High-frequency data stores + granular ValueNotifiers to prevent full-screen rebuilds
   final List<StreamMessage> _chat = [];
   final List<StreamMessage> _events = [];
+  final ValueNotifier<int> _chatVersion = ValueNotifier<int>(0);
+  final ValueNotifier<int> _eventsVersion = ValueNotifier<int>(0);
+  final ValueNotifier<int> _sessionSecondsNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _velocityTickNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<String> _topSupporterNotifier = ValueNotifier<String>('No gifts yet');
+
   final List<String> _ttHosts = [];
   final Set<String> _promptedHosts = {};
+  final Set<String> _ytSeenSignatures = {};
   final Map<String, int> _gifterScores = {};
 
   final Map<String, DateTime> _hostConnectedAt = {};
   final Map<String, List<DateTime>> _messageTimestamps = {};
   Timer? _velocityTimer;
   Timer? _stopwatchTimer;
-  int _sessionSeconds = 0;
+  DateTime _lastChatScrollTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool _showVelocity = true;
   bool _showStopwatch = true;
   bool _showTopSupporter = true;
 
-  late AnimationController _hypeController;
-  late Animation<double> _hypeAnimation;
+  late final AnimationController _hypeController;
+  late final Animation<double> _hypeAnimation;
 
   final TextEditingController _ttPrimaryInput = TextEditingController();
   final TextEditingController _twInput = TextEditingController();
@@ -167,16 +200,18 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     super.initState();
     _hypeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 750),
     )..repeat(reverse: true);
 
-    _hypeAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+    _hypeAnimation = Tween<double>(begin: 0.35, end: 1.0).animate(
       CurvedAnimation(parent: _hypeController, curve: Curves.easeInOut),
     );
 
     _velocityTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      _pruneOldTimestamps();
-      if (mounted) setState(() {});
+      if (_isConnected && mounted) {
+        _pruneOldTimestamps();
+        _velocityTickNotifier.value++;
+      }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -192,6 +227,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     _velocityTimer?.cancel();
     _stopwatchTimer?.cancel();
     _logoTapTimer?.cancel();
+    _chatVersion.dispose();
+    _eventsVersion.dispose();
+    _sessionSecondsNotifier.dispose();
+    _velocityTickNotifier.dispose();
+    _topSupporterNotifier.dispose();
     _chatScrollController.dispose();
     _eventsScrollController.dispose();
     _ttPrimaryInput.dispose();
@@ -205,6 +245,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final clean = key.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt[clean] = DateTime.now();
     _messageTimestamps[clean] = [];
+    _velocityTickNotifier.value++;
   }
 
   bool _isHostCalibrating(String key) {
@@ -228,8 +269,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   void _pruneOldTimestamps() {
     final cutoff = DateTime.now().subtract(const Duration(seconds: 30));
-    for (final key in _messageTimestamps.keys) {
-      _messageTimestamps[key]!.removeWhere((t) => t.isBefore(cutoff));
+    for (final list in _messageTimestamps.values) {
+      list.removeWhere((t) => t.isBefore(cutoff));
     }
   }
 
@@ -267,13 +308,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Color _getColorForHost(String? host) {
-    if (host == null || host.isEmpty) return const Color(0xFF00E5FF);
+    if (host == null || host.isEmpty) return _cyanAccent;
     final key = host.toLowerCase().replaceAll('@', '').trim();
-    if (!_hostColors.containsKey(key)) {
-      final next = _hostPalette[_hostColors.length % _hostPalette.length];
-      _hostColors[key] = next;
-    }
-    return _hostColors[key]!;
+    return _hostColors.putIfAbsent(
+      key,
+      () => _hostPalette[_hostColors.length % _hostPalette.length],
+    );
   }
 
   Future<void> _checkAgreementStatus() async {
@@ -291,6 +331,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final kc = prefs.getString('saved_handle_kc') ?? '';
     final yt = prefs.getString('saved_handle_yt') ?? '';
 
+    if (!mounted) return;
     setState(() {
       if (tt.isNotEmpty) _ttPrimaryInput.text = tt;
       if (tw.isNotEmpty) _twInput.text = tw;
@@ -327,6 +368,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // MODALS & DIALOGS
+  // ---------------------------------------------------------------------------
+
   void _showInstallInstructionsModal() {
     String ua = '';
     if (kIsWeb) {
@@ -341,90 +386,63 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Icon(Icons.install_mobile_rounded, color: Color(0xFF00E5FF), size: 22),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Install OmniFeed App',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
+        title: _buildModalTitle(Icons.install_mobile_rounded, 'Install OmniFeed App'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (isIOS) ...[
-                const Text('To install on iPhone / iPad (Safari):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                const Text('To install on iPhone / iPad (Safari):', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white)),
+                const SizedBox(height: 10),
+                _buildStepRow('1', 'Tap the Share icon (square with upward arrow) at the bottom of Safari.'),
                 const SizedBox(height: 8),
-                _buildInstallStep('1', 'Tap the Share icon (square with upward arrow) at the bottom of Safari.'),
-                const SizedBox(height: 6),
-                _buildInstallStep('2', 'Scroll down and tap "Add to Home Screen".'),
-                const SizedBox(height: 6),
-                _buildInstallStep('3', 'Tap "Add" in the top right to launch OmniFeed in full-screen standalone mode.'),
+                _buildStepRow('2', 'Scroll down and tap "Add to Home Screen".'),
+                const SizedBox(height: 8),
+                _buildStepRow('3', 'Tap "Add" in the top right to launch OmniFeed in full-screen standalone mode.'),
               ] else if (isAndroid) ...[
-                const Text('To install on Android (Chrome / Edge):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                const Text('To install on Android (Chrome / Edge):', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white)),
+                const SizedBox(height: 10),
+                _buildStepRow('1', 'Tap the three dots (⋮) in the top-right corner of your browser.'),
                 const SizedBox(height: 8),
-                _buildInstallStep('1', 'Tap the three dots (⋮) in the top-right corner of your browser.'),
-                const SizedBox(height: 6),
-                _buildInstallStep('2', 'Select "Install app" or "Add to Home screen".'),
-                const SizedBox(height: 6),
-                _buildInstallStep('3', 'Confirm installation to add the app icon directly to your launcher.'),
+                _buildStepRow('2', 'Select "Install app" or "Add to Home screen".'),
+                const SizedBox(height: 8),
+                _buildStepRow('3', 'Confirm installation to add the app icon directly to your launcher.'),
               ] else ...[
-                const Text('To install on Desktop (Chrome / Edge):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                const Text('To install on Desktop (Chrome / Edge):', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white)),
+                const SizedBox(height: 10),
+                _buildStepRow('1', 'Click the Install icon (monitor with down arrow) in the right side of the address bar.'),
                 const SizedBox(height: 8),
-                _buildInstallStep('1', 'Click the Install icon (computer with down arrow) in the address bar.'),
-                const SizedBox(height: 6),
-                _buildInstallStep('2', 'Click "Install" to run OmniFeed in a clean, dedicated window.'),
+                _buildStepRow('2', 'Click "Install" to run OmniFeed in a clean, dedicated telemetry window.'),
               ],
             ],
           ),
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Got It', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Got It', () => Navigator.pop(ctx)),
         ],
       ),
     );
   }
 
-  Widget _buildInstallStep(String step, String text) {
+  Widget _buildStepRow(String step, String text) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 20,
-          height: 20,
+          width: 22,
+          height: 22,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFF00E5FF), width: 1),
+            color: _cyanAccent.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: _cyanAccent.withValues(alpha: 0.6), width: 1),
           ),
-          child: Text(step, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF00E5FF))),
+          child: Text(step, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _cyanAccent)),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.35)),
+          child: Text(text, style: const TextStyle(fontSize: 12, color: Colors.white70, height: 1.4)),
         ),
       ],
     );
@@ -435,65 +453,52 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (c, setDState) => AlertDialog(
-          backgroundColor: const Color(0xFF16161D),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: Color(0xFF00E5FF), width: 1.0),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.tune_rounded, color: Color(0xFF00E5FF), size: 18),
-              SizedBox(width: 8),
-              Text('Stats Display Toggles', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            ],
-          ),
+          title: _buildModalTitle(Icons.tune_rounded, 'Telemetry Modules'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CheckboxListTile(
+              SwitchListTile(
                 dense: true,
-                activeColor: const Color(0xFF00E5FF),
-                checkColor: Colors.black,
-                title: const Text('Hype Meter Gauges', style: TextStyle(fontSize: 12)),
-                subtitle: const Text('Engagement bar per active host', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                contentPadding: EdgeInsets.zero,
+                activeColor: _cyanAccent,
+                title: const Text('Hype Meter Gauges', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Real-time rolling 30s velocity per active host', style: TextStyle(fontSize: 11, color: Colors.white54)),
                 value: _showVelocity,
                 onChanged: (v) {
-                  setState(() => _showVelocity = v ?? true);
+                  setState(() => _showVelocity = v);
                   setDState(() {});
                 },
               ),
-              CheckboxListTile(
+              const Divider(color: _borderSubtle),
+              SwitchListTile(
                 dense: true,
-                activeColor: const Color(0xFF00E5FF),
-                checkColor: Colors.black,
-                title: const Text('Session Runtime Stopwatch', style: TextStyle(fontSize: 12)),
-                subtitle: const Text('Tracks elapsed live stream uptime', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                contentPadding: EdgeInsets.zero,
+                activeColor: _cyanAccent,
+                title: const Text('Session Runtime Stopwatch', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Tracks elapsed live stream uptime', style: TextStyle(fontSize: 11, color: Colors.white54)),
                 value: _showStopwatch,
                 onChanged: (v) {
-                  setState(() => _showStopwatch = v ?? true);
+                  setState(() => _showStopwatch = v);
                   setDState(() {});
                 },
               ),
-              CheckboxListTile(
+              const Divider(color: _borderSubtle),
+              SwitchListTile(
                 dense: true,
-                activeColor: const Color(0xFF00E5FF),
-                checkColor: Colors.black,
-                title: const Text('Top Supporter Readout', style: TextStyle(fontSize: 12)),
-                subtitle: const Text('Displays session top diamond contributor', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                contentPadding: EdgeInsets.zero,
+                activeColor: _cyanAccent,
+                title: const Text('Top Supporter Readout', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Highlights session top diamond contributor', style: TextStyle(fontSize: 11, color: Colors.white54)),
                 value: _showTopSupporter,
                 onChanged: (v) {
-                  setState(() => _showTopSupporter = v ?? true);
+                  setState(() => _showTopSupporter = v);
                   setDState(() {});
                 },
               ),
             ],
           ),
           actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Done', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
-            ),
+            _buildPrimaryDialogButton('Done', () => Navigator.pop(ctx)),
           ],
         ),
       ),
@@ -508,34 +513,30 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (c, setDState) => AlertDialog(
-          backgroundColor: const Color(0xFF16161D),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
-          ),
           title: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
+                  color: _cyanAccent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _cyanAccent.withValues(alpha: 0.4)),
                 ),
-                child: const Icon(Icons.verified_user_rounded, color: Color(0xFF00E5FF), size: 22),
+                child: const Icon(Icons.verified_user_rounded, color: _cyanAccent, size: 22),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Welcome to OmniFeed HUD',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.3),
                     ),
                     SizedBox(height: 2),
                     Text(
                       'Multi-Stream Aggregator • Community Edition',
-                      style: TextStyle(fontSize: 10, color: Colors.white54),
+                      style: TextStyle(fontSize: 11, color: Colors.white54),
                     ),
                   ],
                 ),
@@ -543,71 +544,48 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ],
           ),
           content: SizedBox(
-            width: 440,
+            width: 450,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'OmniFeed unites chats, co-hosts, battle participants, and gift events into a single, real-time second-screen view.',
-                    style: TextStyle(fontSize: 12, height: 1.35, color: Colors.white),
+                    'OmniFeed unites chats, co-hosts, battle participants, and gift events into a single, real-time second-screen cockpit.',
+                    style: TextStyle(fontSize: 12.5, height: 1.4, color: Colors.white),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   _buildAgreementPoint(
                     icon: Icons.shield_outlined,
                     title: '1. Zero Data Collection & Privacy',
                     description: 'We do not collect, store, sell, or track personal data. OmniFeed never asks for or accesses your streaming account logins, passwords, or credentials. It operates solely by listening to public stream telemetry.',
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildAgreementPoint(
                     icon: Icons.speed_rounded,
                     title: '2. Early-Stage Development & Resources',
                     description: 'OmniFeed runs on limited resources until development is further along. Safeguards are in place, but you may occasionally see brief capacity holds or minor latency during peak periods.',
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildAgreementPoint(
                     icon: Icons.alt_route_rounded,
                     title: '3. Platform Independence & Creator Opt-Out',
                     description: 'OmniFeed acts strictly as an external viewer and listener. Streamers who prefer to exclude their channels from public aggregation can submit a global opt-out request anytime.',
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(left: 25.0, top: 4.0),
-                    child: InkWell(
-                      onTap: _launchOptOutUrl,
-                      borderRadius: BorderRadius.circular(4),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1B2A36),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 0.9),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF00E5FF)),
-                            SizedBox(width: 5),
-                            Text('Submit Creator Opt-Out Request', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10.5, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    padding: const EdgeInsets.only(left: 28.0, top: 6.0),
+                    child: _buildOptOutLinkButton(),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildAgreementPoint(
                     icon: Icons.handshake_outlined,
                     title: '4. Fair Usage & Community Powered',
                     description: 'Please do not run automated scrapers or spam relay connections. Tool development and server hosting rely directly on creator feedback and voluntary community support.',
                   ),
-                  const Divider(height: 20, color: Color(0xFF2A2A38)),
+                  const Divider(height: 24, color: _borderSubtle),
                   InkWell(
-                    onTap: () {
-                      setDState(() {
-                        dontShowAgain = !dontShowAgain;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => setDState(() => dontShowAgain = !dontShowAgain),
+                    borderRadius: BorderRadius.circular(6),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
                       child: Row(
@@ -617,19 +595,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                             height: 22,
                             child: Checkbox(
                               value: dontShowAgain,
-                              activeColor: const Color(0xFF00E5FF),
+                              activeColor: _cyanAccent,
                               checkColor: Colors.black,
-                              onChanged: (v) {
-                                setDState(() {
-                                  dontShowAgain = v ?? false;
-                                });
-                              },
+                              onChanged: (v) => setDState(() => dontShowAgain = v ?? false),
                             ),
                           ),
                           const SizedBox(width: 8),
                           const Text(
                             "Don't show this again",
-                            style: TextStyle(fontSize: 11, color: Colors.white70),
+                            style: TextStyle(fontSize: 12, color: Colors.white70),
                           ),
                         ],
                       ),
@@ -640,22 +614,38 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ),
           ),
           actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00E5FF),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              ),
-              onPressed: () async {
-                if (dontShowAgain) {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('omnifeed_agreement_accepted', true);
-                }
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text(
-                'Agree & Continue',
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
-              ),
+            _buildPrimaryDialogButton('Agree & Continue', () async {
+              if (dontShowAgain) {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('omnifeed_agreement_accepted', true);
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptOutLinkButton() {
+    return InkWell(
+      onTap: _launchOptOutUrl,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: _cyanAccent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: _cyanAccent.withValues(alpha: 0.45), width: 1),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.open_in_new_rounded, size: 13, color: _cyanAccent),
+            SizedBox(width: 6),
+            Text(
+              'Submit Creator Opt-Out Request',
+              style: TextStyle(color: _cyanAccent, fontSize: 11, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -667,15 +657,18 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: const Color(0xFF00E5FF), size: 17),
-        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(top: 1.0),
+          child: Icon(icon, color: _cyanAccent, size: 18),
+        ),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-              const SizedBox(height: 2),
-              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.35)),
+              Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+              const SizedBox(height: 3),
+              Text(description, style: const TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.38)),
             ],
           ),
         ),
@@ -687,51 +680,24 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Icon(Icons.sync_rounded, color: Color(0xFF00E5FF), size: 22),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'System Update in Progress',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
+        title: _buildModalTitle(Icons.sync_rounded, 'System Update in Progress'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'OmniFeed is being updated, please wait a moment.',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
             ),
             SizedBox(height: 8),
             Text(
-              'Our relay is currently rebuilding with fresh optimizations. Service usually resumes automatically within 30 to 60 seconds.',
-              style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.35),
+              'Our cloud relay is currently rebuilding with fresh optimizations. Service usually resumes automatically within 30 to 60 seconds.',
+              style: TextStyle(fontSize: 12, color: Colors.white70, height: 1.4),
             ),
           ],
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Okay', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Okay', () => Navigator.pop(ctx)),
         ],
       ),
     );
@@ -741,51 +707,41 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
           side: const BorderSide(color: Color(0xFFFE2C55), width: 1.2),
         ),
         title: const Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 22),
-            SizedBox(width: 8),
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 24),
+            SizedBox(width: 10),
             Expanded(
               child: Text(
                 'OmniFeed is at capacity. Please try again shortly!',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white, height: 1.25),
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Colors.white, height: 1.25),
               ),
             ),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        content: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF24151C),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.4), width: 1),
+          ),
+          child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF24151C),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.4), width: 1),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 2.0),
-                      child: Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 16),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        "We're experiencing high demand! As an early-stage project, OmniFeed relies on community support to scale our infrastructure. Contributing financially directly supports server and development costs, but spreading the word is just as valuable in helping the tool grow.",
-                        style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.4),
-                      ),
-                    ),
-                  ],
+              Padding(
+                padding: EdgeInsets.only(top: 2.0),
+                child: Icon(Icons.favorite_rounded, color: Color(0xFFFE2C55), size: 16),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "We're experiencing high demand! As an early-stage project, OmniFeed relies on community support to scale our infrastructure. Contributing financially directly supports server and development costs, but spreading the word is just as valuable in helping the tool grow.",
+                  style: TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.4),
                 ),
               ),
             ],
@@ -796,20 +752,18 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Dismiss', style: TextStyle(color: Colors.white60)),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFE2C55),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
             onPressed: () {
               Navigator.pop(ctx);
               _showSupportModal();
             },
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.favorite, size: 14, color: Colors.white),
-                SizedBox(width: 5),
-                Text('Support Development', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-              ],
-            ),
+            icon: const Icon(Icons.favorite_rounded, size: 14),
+            label: const Text('Support Development', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
           ),
         ],
       ),
@@ -821,18 +775,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF00E5FF), size: 20),
-            SizedBox(width: 8),
-            Text('Relay Admin Gate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
+        title: _buildModalTitle(Icons.admin_panel_settings_rounded, 'Relay Admin Gate'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -845,46 +788,46 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             TextField(
               controller: entry,
               obscureText: true,
-              decoration: const InputDecoration(
+              autofocus: true,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
                 hintText: 'Admin Key',
                 isDense: true,
-                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: _bgDeep,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
           ],
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () async {
-              final key = entry.text.trim();
-              Navigator.pop(ctx);
-              if (key == '#testcapacity') {
-                _showAtCapacityModal();
-                return;
-              }
-              if (key == '#testwelcome') {
-                _showWelcomeAgreementModal();
-                return;
-              }
-              if (key == '#testupdating') {
-                _showUpdatingModal();
-                return;
-              }
-              if (key.isNotEmpty) {
-                await _fetchAndShowAdminStats(key);
-              } else {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                );
-              }
-            },
-            child: const Text('Authenticate', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Authenticate', () async {
+            final key = entry.text.trim();
+            Navigator.pop(ctx);
+            if (key == '#testcapacity') {
+              _showAtCapacityModal();
+              return;
+            }
+            if (key == '#testwelcome') {
+              _showWelcomeAgreementModal();
+              return;
+            }
+            if (key == '#testupdating') {
+              _showUpdatingModal();
+              return;
+            }
+            if (key.isNotEmpty) {
+              await _fetchAndShowAdminStats(key);
+            } else {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+          }),
         ],
       ),
     );
@@ -924,26 +867,16 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final clients = data['concurrent_ws_clients'] ?? 0;
     final streams = data['active_tiktok_streams'] ?? 0;
     final cached = data['cached_user_ids'] ?? 0;
+    final memMb = data['memory_usage_mb'] ?? 0;
     final handles = (data['tracked_handles'] as List? ?? []);
     final blocked = (data['blocked_creators'] as List? ?? []);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.analytics_outlined, color: Color(0xFF00E5FF), size: 20),
-            SizedBox(width: 8),
-            Text('Relay Live Telemetry', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
+        title: _buildModalTitle(Icons.analytics_outlined, 'Relay Live Telemetry'),
         content: SizedBox(
-          width: 320,
+          width: 340,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -951,34 +884,31 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               children: [
                 _buildStatRow('Active Web Clients:', '$clients'),
                 _buildStatRow('Active TikTok Streams:', '$streams'),
+                _buildStatRow('Container RAM Usage:', '$memMb MB'),
                 _buildStatRow('Cached User IDs:', '$cached'),
                 _buildStatRow('Blocked Creators:', '${blocked.length}'),
-                const Divider(height: 18, color: Color(0xFF2E2E3D)),
+                const Divider(height: 20, color: _borderSubtle),
                 const Text('Active Host Streams:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
                 const SizedBox(height: 6),
                 if (handles.isEmpty)
-                  const Text('No active streams connected', style: TextStyle(fontSize: 11, color: Colors.white54))
+                  const Text('No active streams connected', style: TextStyle(fontSize: 11.5, color: Colors.white54))
                 else
                   ...handles.map((h) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('@$h', style: const TextStyle(fontSize: 12, color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
-                        const Text('Live Tracking', style: TextStyle(fontSize: 10, color: Colors.greenAccent)),
-                      ],
-                    ),
-                  )),
+                        padding: const EdgeInsets.symmetric(vertical: 2.5),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('@$h', style: const TextStyle(fontSize: 12, color: _cyanAccent, fontWeight: FontWeight.bold)),
+                            const Text('Live Tracking', style: TextStyle(fontSize: 10.5, color: _emeraldLive)),
+                          ],
+                        ),
+                      )),
               ],
             ),
           ),
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Close', () => Navigator.pop(ctx)),
         ],
       ),
     );
@@ -986,12 +916,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Widget _buildStatRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      padding: const EdgeInsets.symmetric(vertical: 3.5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF00E5FF))),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _cyanAccent)),
         ],
       ),
     );
@@ -1016,11 +946,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             boxShadow: const [
-              BoxShadow(color: Colors.black54, blurRadius: 24, spreadRadius: 4),
+              BoxShadow(color: Colors.black54, blurRadius: 28, spreadRadius: 4),
             ],
           ),
           child: Column(
-            mainAxisSize: minAxisSize(),
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1174,88 +1104,41 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
-  MainAxisSize minAxisSize() => MainAxisSize.min;
-
   void _showHelpDialog() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Icon(Icons.menu_book_rounded, color: Color(0xFF00E5FF), size: 22),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'OmniFeed Manual',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHelpStep('1', 'Select Ingestion Feeds', 'Toggle platform pills to reveal handle input boxes for TikTok, Twitch, Kick, and YouTube.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('2', 'Enter Handles / IDs', 'Input your creator usernames or YouTube Live Video IDs.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('3', 'Manage Active Co-Hosts', 'Tap the +0 group badge under TikTok to view co-hosts and customize neon badge colors.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('4', 'Automatic Co-Host / Battle Detection', 'When linked anchors join a box or battle, an instant prompt allows you to merge their chat with a single tap.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the text icon (tT) in the toolbar to adjust font sizing across all panes and set custom chat colors.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('6', 'Hype Meter & Live Competition', 'Helps monitor engagement and encourage chat interaction during co-host sessions, paired with a session runtime stopwatch. Both can be toggled off anytime in the stats panel.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('7', 'Toggle Stats Panel Metrics', 'Tap the slider icon in the Session Stats pane header to toggle the Hype Meter, Session Stopwatch, or Top Supporter widgets on or off.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('8', 'Go Live', 'Tap CONNECT to aggregate live chats, subscriber badges, alerts, and diamonds simultaneously.'),
-              const SizedBox(height: 10),
-              _buildHelpStep('9', 'Creator Privacy & Global Opt-Out', 'OmniFeed listens solely to open public broadcast telemetry. Streamers who prefer to exclude their channels from public aggregation can submit a removal request anytime.'),
-              Padding(
-                padding: const EdgeInsets.only(left: 31.0, top: 4.0),
-                child: InkWell(
-                  onTap: _launchOptOutUrl,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1B2A36),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 0.9),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF00E5FF)),
-                        SizedBox(width: 5),
-                        Text('Submit Creator Opt-Out Request', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10.5, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
+        title: _buildModalTitle(Icons.menu_book_rounded, 'OmniFeed Manual'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHelpStep('1', 'Select Ingestion Feeds', 'Toggle platform pills (TikTok, Twitch, Kick, YouTube) to enable handle inputs.'),
+                const SizedBox(height: 10),
+                _buildHelpStep('2', 'Enter Handles / IDs', 'Input your creator usernames or YouTube Live Video IDs. Tap the color dot inside any input pill to customize its platform accent.'),
+                const SizedBox(height: 10),
+                _buildHelpStep('3', 'Manage Active Co-Hosts', 'Tap the +0 group badge inside the TikTok input pill to manually add co-hosts or customize individual host badge colors.'),
+                const SizedBox(height: 10),
+                _buildHelpStep('4', 'Automatic Co-Host / Battle Detection', 'When linked anchors join a TikTok box or battle, an instant prompt allows you to merge their live chat with one tap.'),
+                const SizedBox(height: 10),
+                _buildHelpStep('5', 'Customize Chat Appearance', 'Tap the Typography (tT) icon in the command drawer to scale font size across all panes and customize text/username colors.'),
+                const SizedBox(height: 10),
+                _buildHelpStep('6', 'Hype Meter & Live Competition', 'Monitors 30-second rolling chat velocity across all connected hosts alongside a live session runtime stopwatch.'),
+                const SizedBox(height: 10),
+                _buildHelpStep('7', 'Creator Privacy & Global Opt-Out', 'OmniFeed listens solely to open public broadcast telemetry. Streamers who prefer to exclude their channels can submit a removal request anytime.'),
+                Padding(
+                  padding: const EdgeInsets.only(left: 32.0, top: 6.0),
+                  child: _buildOptOutLinkButton(),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Close', () => Navigator.pop(ctx)),
         ],
       ),
     );
@@ -1270,23 +1153,23 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           height: 22,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFF00E5FF), width: 1),
+            color: _cyanAccent.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: _cyanAccent.withValues(alpha: 0.6), width: 1),
           ),
           child: Text(
             step,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF00E5FF)),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _cyanAccent),
           ),
         ),
-        const SizedBox(width: 9),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
               const SizedBox(height: 2),
-              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
+              Text(description, style: const TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.35)),
             ],
           ),
         ),
@@ -1298,122 +1181,81 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF00E5FF), width: 1),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Icon(Icons.hub_rounded, color: Color(0xFF00E5FF), size: 22),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'What is OmniFeed?',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'OmniFeed is a unified, real-time live stream HUD built for content creators and streamers.',
-                style: TextStyle(fontSize: 13, height: 1.4, color: Colors.white),
-              ),
-              const SizedBox(height: 12),
-              _buildAboutPoint(Icons.alt_route_rounded, 'Multi-Platform Aggregation', 'Combines chats and viewer interactions from TikTok, Twitch, Kick, and YouTube into one seamless, unified stream view.'),
-              const SizedBox(height: 10),
-              _buildAboutPoint(Icons.group_add_rounded, 'TikTok Co-Host & Battle Detection', 'Automatically detects rival anchors and co-hosts during TikTok Live sessions, allowing you to merge their live feeds with custom color coding.'),
-              const SizedBox(height: 10),
-              _buildAboutPoint(Icons.speed_rounded, 'Hype Meter & Stopwatch', 'Helps to keep an eye on engagement and encourage chatting during co-host sessions, paired with an automated session runtime stopwatch. Both can easily be toggled off in the stats panel if desired.'),
-              const SizedBox(height: 10),
-              _buildAboutPoint(Icons.devices_rounded, 'Second-Screen HUD', 'Designed to run cleanly on a phone, tablet, or secondary monitor so you can easily read chat, moderate, and engage without cluttering your main broadcast display.'),
-              const SizedBox(height: 10),
-              _buildAboutPoint(Icons.privacy_tip_outlined, 'Creator Opt-Out', 'Streamers who prefer to exclude their channels from public aggregation can request global exclusion at any time.'),
-              Padding(
-                padding: const EdgeInsets.only(left: 26.0, top: 4.0),
-                child: InkWell(
-                  onTap: _launchOptOutUrl,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1B2A36),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 0.9),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF00E5FF)),
-                        SizedBox(width: 5),
-                        Text('Submit Creator Opt-Out Request', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10.5, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+        title: _buildModalTitle(Icons.hub_rounded, 'What is OmniFeed?'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'OmniFeed is a unified, real-time live stream telemetry HUD engineered for multi-platform creators and co-hosts.',
+                  style: TextStyle(fontSize: 13, height: 1.4, color: Colors.white),
+                ),
+                const SizedBox(height: 14),
+                _buildAgreementPoint(
+                  icon: Icons.alt_route_rounded,
+                  title: 'Multi-Platform Aggregation',
+                  description: 'Combines chats, moderator badges, and viewer interactions from TikTok, Twitch, Kick, and YouTube into one unified stream.',
+                ),
+                const SizedBox(height: 10),
+                _buildAgreementPoint(
+                  icon: Icons.group_add_rounded,
+                  title: 'TikTok Co-Host & Battle Detection',
+                  description: 'Automatically detects rival anchors and co-hosts during TikTok Live sessions, allowing you to merge their live feeds with custom neon color coding.',
+                ),
+                const SizedBox(height: 10),
+                _buildAgreementPoint(
+                  icon: Icons.speed_rounded,
+                  title: 'Hype Meter & Stopwatch',
+                  description: 'Tracks rolling audience velocity per host to gamify chat engagement during co-host battles, paired with an automated session runtime stopwatch.',
+                ),
+                const SizedBox(height: 10),
+                _buildAgreementPoint(
+                  icon: Icons.devices_rounded,
+                  title: 'Second-Screen PWA Cockpit',
+                  description: 'Runs natively as an installable web app on phones, tablets, or secondary monitors without cluttering your primary broadcast scenes.',
+                ),
+                const SizedBox(height: 10),
+                _buildAgreementPoint(
+                  icon: Icons.privacy_tip_outlined,
+                  title: 'Creator Opt-Out',
+                  description: 'Streamers who prefer to exclude their channels from public aggregation can request global exclusion at any time.',
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 28.0, top: 6.0),
+                  child: _buildOptOutLinkButton(),
+                ),
+                const Divider(height: 24, color: _borderSubtle),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E141D),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.35)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.favorite_rounded, color: Color(0xFFFE2C55), size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Enjoying OmniFeed? Tap the heart icon in the command bar to support ongoing server & feature development!',
+                          style: TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.35),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const Divider(height: 24, color: Color(0xFF2A2A38)),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E28),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.3)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Enjoying the tool? Tap the heart icon in the toolbar to support ongoing development!',
-                        style: TextStyle(fontSize: 11, color: Colors.white70),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Got It', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Got It', () => Navigator.pop(ctx)),
         ],
       ),
-    );
-  }
-
-  Widget _buildAboutPoint(IconData icon, String title, String description) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: const Color(0xFF00E5FF), size: 18),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-              const SizedBox(height: 2),
-              Text(description, style: const TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -1422,15 +1264,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (c, setDState) => AlertDialog(
-          backgroundColor: const Color(0xFF16161D),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          title: const Row(
-            children: [
-              Icon(Icons.format_size_rounded, color: Color(0xFF00E5FF), size: 20),
-              SizedBox(width: 8),
-              Text('Chat & HUD Appearance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
-          ),
+          title: _buildModalTitle(Icons.format_size_rounded, 'HUD Typography & Colors'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1439,8 +1273,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Global Pane Text Size:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    Text('${_chatFontSize.toInt()} pt', style: const TextStyle(fontSize: 12, color: Color(0xFF00E5FF))),
+                    const Text('Global HUD Text Scale:', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _cyanAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text('${_chatFontSize.toInt()} pt', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _cyanAccent)),
+                    ),
                   ],
                 ),
                 Slider(
@@ -1449,24 +1290,24 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   max: 22.0,
                   divisions: 13,
                   label: '${_chatFontSize.toInt()} pt',
-                  activeColor: const Color(0xFF00E5FF),
+                  activeColor: _cyanAccent,
                   onChanged: (v) {
                     setState(() => _chatFontSize = v);
                     setDState(() {});
                   },
                 ),
-                const Divider(height: 20),
+                const Divider(height: 20, color: _borderSubtle),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
-                  title: const Text('Chat Text Color', style: TextStyle(fontSize: 12)),
+                  title: const Text('Chat Message Color', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                   trailing: InkWell(
                     onTap: () {
                       Color pick = _chatTextColor;
                       showDialog(
                         context: context,
                         builder: (subCtx) => AlertDialog(
-                          title: const Text('Text Color'),
+                          title: const Text('Message Text Color', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           content: SingleChildScrollView(
                             child: ColorPicker(pickerColor: pick, onColorChanged: (cl) => pick = cl, enableAlpha: false),
                           ),
@@ -1477,23 +1318,20 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                                 setDState(() {});
                                 Navigator.pop(subCtx);
                               },
-                              child: const Text('Default White'),
+                              child: const Text('Default'),
                             ),
-                            ElevatedButton(
-                              onPressed: () {
-                                setState(() => _chatTextColor = pick);
-                                setDState(() {});
-                                Navigator.pop(subCtx);
-                              },
-                              child: const Text('Apply'),
-                            ),
+                            _buildPrimaryDialogButton('Apply', () {
+                              setState(() => _chatTextColor = pick);
+                              setDState(() {});
+                              Navigator.pop(subCtx);
+                            }),
                           ],
                         ),
                       );
                     },
                     child: Container(
-                      width: 22,
-                      height: 22,
+                      width: 26,
+                      height: 26,
                       decoration: BoxDecoration(
                         color: _chatTextColor,
                         shape: BoxShape.circle,
@@ -1505,14 +1343,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
-                  title: const Text('Username Color', style: TextStyle(fontSize: 12)),
+                  title: const Text('Username Color', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                   trailing: InkWell(
                     onTap: () {
                       Color pick = _chatUserColor;
                       showDialog(
                         context: context,
                         builder: (subCtx) => AlertDialog(
-                          title: const Text('Username Color'),
+                          title: const Text('Username Color', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           content: SingleChildScrollView(
                             child: ColorPicker(pickerColor: pick, onColorChanged: (cl) => pick = cl, enableAlpha: false),
                           ),
@@ -1523,23 +1361,20 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                                 setDState(() {});
                                 Navigator.pop(subCtx);
                               },
-                              child: const Text('Default White'),
+                              child: const Text('Default'),
                             ),
-                            ElevatedButton(
-                              onPressed: () {
-                                setState(() => _chatUserColor = pick);
-                                setDState(() {});
-                                Navigator.pop(subCtx);
-                              },
-                              child: const Text('Apply'),
-                            ),
+                            _buildPrimaryDialogButton('Apply', () {
+                              setState(() => _chatUserColor = pick);
+                              setDState(() {});
+                              Navigator.pop(subCtx);
+                            }),
                           ],
                         ),
                       );
                     },
                     child: Container(
-                      width: 22,
-                      height: 22,
+                      width: 26,
+                      height: 26,
                       decoration: BoxDecoration(
                         color: _chatUserColor,
                         shape: BoxShape.circle,
@@ -1552,24 +1387,71 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ),
           ),
           actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Done', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            ),
+            _buildPrimaryDialogButton('Done', () => Navigator.pop(ctx)),
           ],
         ),
       ),
     );
   }
 
-  void _scrollToBottom(ScrollController controller) {
+  Widget _buildModalTitle(IconData icon, String title) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: _cyanAccent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _cyanAccent.withValues(alpha: 0.35)),
+          ),
+          child: Icon(icon, color: _cyanAccent, size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrimaryDialogButton(String label, VoidCallback onPressed) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _cyanAccent,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      onPressed: onPressed,
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SCROLL & COLOR PICKER HELPERS
+  // ---------------------------------------------------------------------------
+
+  void _scrollToBottom(ScrollController controller, {bool isChat = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (controller.hasClients) {
+      if (!controller.hasClients) return;
+      final pos = controller.position;
+      // Allow user to inspect scrollback unless they are within 140px of the bottom
+      if (pos.maxScrollExtent - pos.pixels > 140) return;
+
+      final now = DateTime.now();
+      if (isChat && now.difference(_lastChatScrollTime).inMilliseconds < 120) {
+        // High-frequency burst: jump directly to avoid overlapping animation jank
+        controller.jumpTo(pos.maxScrollExtent);
+      } else {
+        if (isChat) _lastChatScrollTime = now;
         controller.animateTo(
-          controller.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
+          pos.maxScrollExtent,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
         );
       }
     });
@@ -1580,9 +1462,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('$platformKey Accent Color'),
+        title: Text('$platformKey Accent Color', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         content: SingleChildScrollView(
-          child: ColorPicker(pickerColor: pickerColor, onColorChanged: (c) => pickerColor = c, paletteType: PaletteType.hsvWithHue, enableAlpha: false),
+          child: ColorPicker(
+            pickerColor: pickerColor,
+            onColorChanged: (c) => pickerColor = c,
+            paletteType: PaletteType.hsvWithHue,
+            enableAlpha: false,
+          ),
         ),
         actions: [
           TextButton(
@@ -1592,13 +1479,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             },
             child: const Text('Reset Default'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() => _colors[platformKey] = pickerColor);
-              Navigator.pop(ctx);
-            },
-            child: const Text('Apply'),
-          ),
+          _buildPrimaryDialogButton('Apply', () {
+            setState(() => _colors[platformKey] = pickerColor);
+            Navigator.pop(ctx);
+          }),
         ],
       ),
     );
@@ -1610,31 +1494,41 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('@$clean Badge Color'),
+        title: Text('@$clean Badge Color', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         content: SingleChildScrollView(
-          child: ColorPicker(pickerColor: pickerColor, onColorChanged: (c) => pickerColor = c, paletteType: PaletteType.hsvWithHue, enableAlpha: false),
+          child: ColorPicker(
+            pickerColor: pickerColor,
+            onColorChanged: (c) => pickerColor = c,
+            paletteType: PaletteType.hsvWithHue,
+            enableAlpha: false,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () {
               setState(() => _hostColors.remove(clean));
+              _chatVersion.value++;
+              _velocityTickNotifier.value++;
               onUpdate();
               Navigator.pop(ctx);
             },
             child: const Text('Reset Default'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() => _hostColors[clean] = pickerColor);
-              onUpdate();
-              Navigator.pop(ctx);
-            },
-            child: const Text('Apply'),
-          ),
+          _buildPrimaryDialogButton('Apply', () {
+            setState(() => _hostColors[clean] = pickerColor);
+            _chatVersion.value++;
+            _velocityTickNotifier.value++;
+            onUpdate();
+            Navigator.pop(ctx);
+          }),
         ],
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // STREAM INGESTION & RELAY LOGIC
+  // ---------------------------------------------------------------------------
 
   void _toggleConnection() {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -1644,12 +1538,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _stopwatchTimer?.cancel();
       _hostConnectedAt.clear();
       _messageTimestamps.clear();
-      _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Feeds Disconnected', badgeBg: const Color(0xFF00E5FF)));
+      _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'All telemetry feeds disconnected', badgeBg: _cyanAccent));
       setState(() {
         _isConnected = false;
         _statusText = 'Disconnected';
-        _sessionSeconds = 0;
       });
+      _sessionSecondsNotifier.value = 0;
+      _velocityTickNotifier.value++;
       return;
     }
 
@@ -1659,13 +1554,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       _isConnected = true;
       _statusText = 'Connected';
       _isMenuExpanded = false;
-      _sessionSeconds = 0;
     });
+    _sessionSecondsNotifier.value = 0;
 
     _stopwatchTimer?.cancel();
     _stopwatchTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_isConnected && mounted) {
-        setState(() => _sessionSeconds++);
+        _sessionSecondsNotifier.value++;
       }
     });
 
@@ -1687,6 +1582,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         cl?.disconnect();
       } catch (_) {}
     }
+    _velocityTickNotifier.value++;
   }
 
   void _disconnectAll() {
@@ -1704,6 +1600,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     }
     _ttWebChannelsMap.clear();
     _promptedHosts.clear();
+    _ytSeenSignatures.clear();
     _hostConnectedAt.clear();
     _messageTimestamps.clear();
 
@@ -1726,31 +1623,20 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16161D),
-        title: const Row(
-          children: [
-            Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF00E5FF), size: 20),
-            SizedBox(width: 8),
-            Text('Co-Host Detected', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
+        title: _buildModalTitle(Icons.person_add_alt_1_rounded, 'Co-Host Detected'),
         content: Text(
-          '@$cohostHandle is currently co-hosting.\nWould you like to add their chat feed to the unified view?',
-          style: const TextStyle(fontSize: 13, color: Colors.white70),
+          '@$cohostHandle is currently co-hosting or battling.\nWould you like to merge their live chat feed into your HUD?',
+          style: const TextStyle(fontSize: 13, color: Colors.white70, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Ignore', style: TextStyle(color: Colors.grey)),
+            child: const Text('Ignore', style: TextStyle(color: Colors.white54)),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _attachSingleTikTokHost(cohostHandle);
-            },
-            child: const Text('Add Chat', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          _buildPrimaryDialogButton('Merge Chat', () {
+            Navigator.pop(ctx);
+            _attachSingleTikTokHost(cohostHandle);
+          }),
         ],
       ),
     );
@@ -1782,7 +1668,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           platform: 'SYS',
           user: 'System',
           text: 'Connected to co-host @$cleanHandle',
-          badgeBg: const Color(0xFF00E5FF),
+          badgeBg: _cyanAccent,
           host: cleanHandle,
         ));
       });
@@ -1840,7 +1726,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       platform: 'SYS',
       user: 'System',
       text: 'Connecting to Cloud Relay for @$cleanHandle...',
-      badgeBg: const Color(0xFF00E5FF),
+      badgeBg: _cyanAccent,
     ));
 
     try {
@@ -1859,7 +1745,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             platform: 'SYS',
             user: 'System',
             text: 'Connected to TikTok @${data['handle']}',
-            badgeBg: const Color(0xFF00E5FF),
+            badgeBg: _cyanAccent,
             host: data['handle'],
           ));
         } else if (event == 'chat') {
@@ -1920,8 +1806,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               setState(() {
                 _isConnected = false;
                 _statusText = 'Opted Out';
-                _sessionSeconds = 0;
               });
+              _sessionSecondsNotifier.value = 0;
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -2006,11 +1892,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             final client = TikTokLiveClient(handle);
             _ttClientsMap[handle.toLowerCase()] = client;
 
-            _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connecting to @$handle...', badgeBg: const Color(0xFF00E5FF)));
+            _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connecting to @$handle...', badgeBg: _cyanAccent));
 
             client.on(EventType.connected, (evt) {
               _markHostConnected(handle);
-              _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to @$handle', badgeBg: const Color(0xFF00E5FF), host: handle));
+              _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to @$handle', badgeBg: _cyanAccent, host: handle));
             });
 
             client.on(EventType.chat, (evt) {
@@ -2078,7 +1964,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           _twitchChannel!.sink.add('NICK justinfan${10000 + DateTime.now().millisecond}');
           _twitchChannel!.sink.add('JOIN #$user');
 
-          _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Twitch #$user', badgeBg: const Color(0xFF00E5FF)));
+          _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Twitch #$user', badgeBg: _cyanAccent));
 
           _twitchChannel!.stream.listen((raw) {
             final msg = raw.toString();
@@ -2088,7 +1974,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               final parts = msg.split(' :');
               if (parts.length >= 3) {
                 final text = parts.sublist(2).join(' :').trim();
-                final userMatch = RegExp(r':(\w+)!').firstMatch(msg);
+                final userMatch = _twitchUserRegex.firstMatch(msg);
                 final sender = userMatch?.group(1) ?? 'TwitchUser';
                 final isMod = msg.contains('mod=1') || msg.contains('badges=broadcaster');
 
@@ -2147,7 +2033,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           'data': {'auth': '', 'channel': 'chatrooms.$chatroomId.v2'}
         }));
 
-        _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Kick #$slug', badgeBg: const Color(0xFF00E5FF)));
+        _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Kick #$slug', badgeBg: _cyanAccent));
 
         _kickChannel!.stream.listen((raw) {
           final packet = jsonDecode(raw.toString());
@@ -2170,7 +2056,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   void _startYTPolling(String channelOrVideoId) {
-    _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Polling YouTube Live stream', badgeBg: const Color(0xFF00E5FF)));
+    _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Polling YouTube Live stream', badgeBg: _cyanAccent));
 
     _ytTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
       try {
@@ -2179,17 +2065,23 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'Mozilla/5.0'});
         if (res.statusCode == 200) {
           final body = res.body;
-          final match = RegExp(r'"liveChatTextMessageRenderer":\{"message":\{"runs":\[\{"text":"(.*?)"\}\]\},"authorName":\{"simpleText":"(.*?)"\}').allMatches(body);
-          for (final m in match) {
+          final matches = _ytMessageRegex.allMatches(body);
+          for (final m in matches) {
             final text = m.group(1) ?? '';
             final sender = m.group(2) ?? 'YTUser';
-            _recordMessageForVelocity('YouTube');
-            _addChat(StreamMessage(
-              platform: 'YT',
-              user: sender,
-              text: text,
-              badgeBg: _colors['YT']!,
-            ));
+            final sig = '$sender:$text';
+            if (_ytSeenSignatures.add(sig)) {
+              if (_ytSeenSignatures.length > 500) {
+                _ytSeenSignatures.remove(_ytSeenSignatures.first);
+              }
+              _recordMessageForVelocity('YouTube');
+              _addChat(StreamMessage(
+                platform: 'YT',
+                user: sender,
+                text: text,
+                badgeBg: _colors['YT']!,
+              ));
+            }
           }
         }
       } catch (_) {}
@@ -2197,24 +2089,36 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   void _recordGift(String user, int value) {
-    setState(() {
-      _gifterScores[user] = (_gifterScores[user] ?? 0) + value;
+    final nextScore = (_gifterScores[user] ?? 0) + value;
+    _gifterScores[user] = nextScore;
+
+    String topUser = user;
+    int maxVal = nextScore;
+    _gifterScores.forEach((k, v) {
+      if (v > maxVal) {
+        maxVal = v;
+        topUser = k;
+      }
     });
+    _topSupporterNotifier.value = '$topUser ($maxVal 💎)';
   }
 
   void _addChat(StreamMessage msg) {
-    setState(() {
-      _chat.add(msg);
-      if (_chat.length > 250) _chat.removeAt(0);
-    });
-    _scrollToBottom(_chatScrollController);
+    _chat.add(msg);
+    // Batch trim to avoid O(N) array shift on every single message
+    if (_chat.length > 300) {
+      _chat.removeRange(0, 50);
+    }
+    _chatVersion.value++;
+    _scrollToBottom(_chatScrollController, isChat: true);
   }
 
   void _addEvent(StreamMessage msg) {
-    setState(() {
-      _events.add(msg);
-      if (_events.length > 200) _events.removeAt(0);
-    });
+    _events.add(msg);
+    if (_events.length > 240) {
+      _events.removeRange(0, 40);
+    }
+    _eventsVersion.value++;
     _scrollToBottom(_eventsScrollController);
   }
 
@@ -2223,29 +2127,72 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF16161D),
+      backgroundColor: _surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        side: BorderSide(color: _borderSubtle, width: 1),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setMState) => SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(ctx).viewInsets.bottom + 16),
             child: SizedBox(
-              height: 320,
+              height: 340,
               child: Column(
                 children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Manage TikTok Co-Hosts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                      const Row(
+                        children: [
+                          Icon(Icons.group_add_rounded, color: _cyanAccent, size: 20),
+                          SizedBox(width: 8),
+                          Text('Manage TikTok Co-Hosts', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(controller: entry, decoration: const InputDecoration(hintText: 'Handle @', isDense: true)),
+                        child: TextField(
+                          controller: entry,
+                          style: const TextStyle(fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: 'Add co-host @handle',
+                            isDense: true,
+                            filled: true,
+                            fillColor: _bgDeep,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: _borderSubtle),
+                            ),
+                          ),
+                        ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle, color: Color(0xFF00E5FF)),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _cyanAccent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
                         onPressed: () {
                           final val = entry.text.trim().replaceAll('@', '');
                           if (val.isNotEmpty && !_ttHosts.contains(val)) {
@@ -2260,51 +2207,75 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                             entry.clear();
                           }
                         },
-                      )
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                      ),
                     ],
                   ),
-                  const Divider(),
+                  const Divider(height: 20, color: _borderSubtle),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: _ttHosts.length,
-                      itemBuilder: (c, idx) {
-                        final hostHandle = _ttHosts[idx];
-                        final hostColor = _getColorForHost(hostHandle);
-                        return ListTile(
-                          dense: true,
-                          leading: InkWell(
-                            onTap: () {
-                              _openHostColorPicker(hostHandle, () {
-                                setMState(() {});
-                              });
-                            },
-                            child: Tooltip(
-                              message: 'Change Badge Color',
-                              child: Container(
-                                width: 22,
-                                height: 22,
-                                decoration: BoxDecoration(
-                                  color: hostColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white60, width: 1.5),
-                                ),
-                              ),
+                    child: _ttHosts.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No co-hosts added yet.\nAdd a handle above or wait for auto-detection.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.white38, height: 1.4),
                             ),
-                          ),
-                          title: Text('@$hostHandle', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                          subtitle: const Text('Tap color circle to customize', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
-                            onPressed: () {
-                              final removed = _ttHosts.removeAt(idx);
-                              _disconnectSingleHost(removed);
-                              setState(() {});
-                              setMState(() {});
+                          )
+                        : ListView.builder(
+                            itemCount: _ttHosts.length,
+                            itemBuilder: (c, idx) {
+                              final hostHandle = _ttHosts[idx];
+                              final hostColor = _getColorForHost(hostHandle);
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                decoration: BoxDecoration(
+                                  color: _surfaceElevated,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: _borderSubtle),
+                                ),
+                                child: ListTile(
+                                  dense: true,
+                                  leading: InkWell(
+                                    onTap: () {
+                                      _openHostColorPicker(hostHandle, () {
+                                        setMState(() {});
+                                      });
+                                    },
+                                    child: Tooltip(
+                                      message: 'Customize Host Badge Color',
+                                      child: Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: hostColor,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white70, width: 1.5),
+                                          boxShadow: [
+                                            BoxShadow(color: hostColor.withValues(alpha: 0.4), blurRadius: 6),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text('@$hostHandle', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                                  subtitle: Text(
+                                    idx == 0 ? 'Primary Host • Tap circle to recolor' : 'Co-Host • Tap circle to recolor',
+                                    style: const TextStyle(fontSize: 10.5, color: Colors.white54),
+                                  ),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 19),
+                                    onPressed: () {
+                                      final removed = _ttHosts.removeAt(idx);
+                                      _disconnectSingleHost(removed);
+                                      setState(() {});
+                                      setMState(() {});
+                                    },
+                                  ),
+                                ),
+                              );
                             },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               ),
@@ -2315,16 +2286,24 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // TOP HEADER & COMMAND DRAWER WIDGETS
+  // ---------------------------------------------------------------------------
+
   Widget _buildBrandLogo({bool isDesktop = false}) {
     return InkWell(
       onTap: _onLogoTapped,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 5 : 3.5),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 5 : 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF1B1B24),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF2E2E3D), width: 1),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF191B26), Color(0xFF12131C)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF2C3044), width: 1),
         ),
         child: RichText(
           text: TextSpan(
@@ -2332,21 +2311,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               TextSpan(
                 text: 'OMNI',
                 style: TextStyle(
-                  fontFamily: 'Orbitron',
-                  fontSize: isDesktop ? 18 : 15,
+                  fontSize: isDesktop ? 16 : 14,
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
                 ),
               ),
               TextSpan(
                 text: 'FEED',
                 style: TextStyle(
-                  fontFamily: 'Orbitron',
-                  fontSize: isDesktop ? 22 : 19,
-                  color: const Color(0xFF00E5FF),
+                  fontSize: isDesktop ? 16 : 14,
+                  color: _cyanAccent,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
+                  letterSpacing: 1.2,
                 ),
               ),
             ],
@@ -2359,33 +2336,26 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   Widget _buildInstallAppButton({bool isDesktop = false}) {
     return InkWell(
       onTap: _handleInstallButton,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 6 : 4.5),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 6 : 5),
         decoration: BoxDecoration(
-          color: const Color(0xFF0A2B35),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF00E5FF), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF00E5FF).withValues(alpha: 0.28),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
+          color: _cyanAccent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _cyanAccent.withValues(alpha: 0.55), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.install_mobile_rounded, size: isDesktop ? 16 : 14, color: const Color(0xFF00E5FF)),
+            Icon(Icons.install_mobile_rounded, size: isDesktop ? 15 : 13.5, color: _cyanAccent),
             const SizedBox(width: 5),
             Text(
               'Install App',
               style: TextStyle(
-                fontSize: isDesktop ? 12 : 11,
-                color: const Color(0xFF00E5FF),
+                fontSize: isDesktop ? 11.5 : 10.5,
+                color: _cyanAccent,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 0.3,
+                letterSpacing: 0.2,
               ),
             ),
           ],
@@ -2397,22 +2367,22 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   Widget _buildWhatIsOmniFeedBadge({bool isDesktop = false}) {
     return InkWell(
       onTap: _showAboutOmniFeedModal,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(7),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10, vertical: isDesktop ? 8 : 6),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 6 : 5),
         decoration: BoxDecoration(
-          color: const Color(0xFF0E2230),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF00E5FF), width: 1.2),
+          color: _surfaceElevated,
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: _borderSubtle, width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.help_outline_rounded, size: isDesktop ? 16 : 14, color: const Color(0xFF00E5FF)),
+            Icon(Icons.info_outline_rounded, size: isDesktop ? 14 : 13, color: _cyanAccent),
             const SizedBox(width: 5),
             Text(
               'What is OmniFeed?',
-              style: TextStyle(fontSize: isDesktop ? 12.5 : 11, color: const Color(0xFF00E5FF), fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: isDesktop ? 11.5 : 10.5, color: Colors.white70, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -2423,31 +2393,46 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   Widget _buildConnectButton({bool isDesktop = false}) {
     return InkWell(
       onTap: _toggleConnection,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        height: isDesktop ? 40 : 36,
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 13),
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: isDesktop ? 36 : 34,
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 18 : 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: _isConnected ? _cyanAccent : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: _cyanAccent, width: 1.2),
+          color: _isConnected ? const Color(0xFF28121B) : _cyanAccent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: _isConnected ? const Color(0xFFFE2C55) : _cyanAccent,
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
-              color: _cyanAccent.withValues(alpha: _isConnected ? 0.35 : 0.15),
-              blurRadius: 8,
-              spreadRadius: 1,
+              color: (_isConnected ? const Color(0xFFFE2C55) : _cyanAccent).withValues(alpha: 0.28),
+              blurRadius: 10,
+              spreadRadius: 0.5,
             ),
           ],
         ),
-        child: Text(
-          _isConnected ? 'Disconnect' : 'Connect',
-          style: TextStyle(
-            fontSize: isDesktop ? 13 : 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.4,
-            color: _isConnected ? _cutoutBg : _cyanAccent,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _isConnected ? Icons.power_settings_new_rounded : Icons.bolt_rounded,
+              size: isDesktop ? 16 : 14,
+              color: _isConnected ? const Color(0xFFFE2C55) : Colors.black,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              _isConnected ? 'DISCONNECT' : 'CONNECT',
+              style: TextStyle(
+                fontSize: isDesktop ? 11.5 : 10.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.6,
+                color: _isConnected ? const Color(0xFFFE2C55) : Colors.black,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2455,40 +2440,73 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Widget _buildPersistentTopBar({required bool isDesktop}) {
     return Container(
-      height: isDesktop ? 50 : 46,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: isDesktop ? 48 : 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: const BoxDecoration(
-        color: Color(0xFF141419),
-        border: Border(bottom: BorderSide(color: Color(0xFF22222D), width: 1)),
+        color: Color(0xFF0E0F16),
+        border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
           _buildBrandLogo(isDesktop: isDesktop),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Container(
-            padding: EdgeInsets.symmetric(horizontal: isDesktop ? 8 : 6, vertical: isDesktop ? 3.5 : 2.5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
             decoration: BoxDecoration(
-              color: _isConnected ? Colors.green.withValues(alpha: 0.18) : Colors.white10,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: _isConnected ? Colors.greenAccent : Colors.white24, width: 0.8),
+              color: _isConnected ? _emeraldLive.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: _isConnected ? _emeraldLive.withValues(alpha: 0.5) : Colors.white12,
+                width: 1,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircleAvatar(radius: isDesktop ? 4 : 3.5, backgroundColor: _isConnected ? Colors.greenAccent : Colors.white38),
-                const SizedBox(width: 4),
+                Container(
+                  width: 6.5,
+                  height: 6.5,
+                  decoration: BoxDecoration(
+                    color: _isConnected ? _emeraldLive : Colors.white38,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      if (_isConnected) BoxShadow(color: _emeraldLive.withValues(alpha: 0.6), blurRadius: 6),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 5),
                 Text(
-                  _isConnected ? 'LIVE' : 'IDLE',
+                  _isConnected ? 'LIVE' : 'STANDBY',
                   style: TextStyle(
-                    fontSize: isDesktop ? 11 : 9.5,
-                    fontWeight: FontWeight.w800,
-                    color: _isConnected ? Colors.greenAccent : Colors.white54,
+                    fontSize: isDesktop ? 10 : 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                    color: _isConnected ? _emeraldLive : Colors.white54,
                   ),
                 ),
               ],
             ),
           ),
+          if (_isConnected && _showStopwatch) ...[
+            const SizedBox(width: 8),
+            ValueListenableBuilder<int>(
+              valueListenable: _sessionSecondsNotifier,
+              builder: (_, secs, _) => Text(
+                _formatDuration(secs),
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: isDesktop ? 12 : 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ],
           const Spacer(),
+          if (!_isMenuExpanded) ...[
+            _buildConnectButton(isDesktop: false),
+            const SizedBox(width: 8),
+          ],
           _buildInstallAppButton(isDesktop: isDesktop),
         ],
       ),
@@ -2499,125 +2517,148 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     return InkWell(
       onTap: () => setState(() => _isMenuExpanded = !_isMenuExpanded),
       child: Container(
-        height: isDesktop ? 26 : 22,
+        height: isDesktop ? 24 : 22,
         width: double.infinity,
         decoration: const BoxDecoration(
-          color: Color(0xFF1B1B24),
+          color: Color(0xFF101119),
           border: Border(
-            top: BorderSide(color: Color(0xFF242432), width: 1),
-            bottom: BorderSide(color: Color(0xFF22222D), width: 1),
+            bottom: BorderSide(color: _borderSubtle, width: 1),
           ),
         ),
-        child: Center(
-          child: Container(
-            width: isDesktop ? 160 : 130,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF232330),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: AnimatedRotation(
-                turns: _isMenuExpanded ? 0.0 : 0.5,
-                duration: const Duration(milliseconds: 200),
-                child: Transform.scale(
-                  scaleX: 5.0,
-                  scaleY: 1.0,
-                  child: Icon(
-                    Icons.keyboard_arrow_up_rounded,
-                    color: const Color(0xFF00E5FF),
-                    size: isDesktop ? 20 : 16,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              decoration: BoxDecoration(
+                color: _surfaceElevated,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _borderSubtle, width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _isMenuExpanded ? 'HIDE CONTROLS' : 'CONFIGURE STREAMS',
+                    style: const TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: Colors.white54,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _isMenuExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    color: _cyanAccent,
+                    size: 14,
+                  ),
+                ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPortraitAccordionDrawer() {
+  Widget _buildCommandDrawer({required bool isDesktop}) {
     return AnimatedSize(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       child: !_isMenuExpanded
           ? const SizedBox.shrink()
           : Container(
+              width: double.infinity,
               decoration: const BoxDecoration(
-                color: Color(0xFF161620),
-                border: Border(bottom: BorderSide(color: _neonPink, width: 1.0)),
+                color: _surfaceCard,
+                border: Border(bottom: BorderSide(color: Color(0xFF282B3D), width: 1)),
               ),
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10, vertical: isDesktop ? 10 : 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildTogglePill('TT', 'TikTok', isDesktop: false),
-                      const SizedBox(width: 6),
-                      _buildTogglePill('TW', 'Twitch', isDesktop: false),
-                      const SizedBox(width: 6),
-                      _buildTogglePill('KC', 'Kick', isDesktop: false),
-                      const SizedBox(width: 6),
-                      _buildTogglePill('YT', 'YouTube', isDesktop: false),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
+                  // Row 1: Platform Toggles + Inputs + Connect CTA
                   Wrap(
                     alignment: WrapAlignment.center,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ..._buildInputsOnlyList(isDesktop: false),
-                      _buildConnectButton(isDesktop: false),
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: _bgDeep,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: _borderSubtle),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildTogglePill('TT', 'TikTok', isDesktop: isDesktop),
+                            const SizedBox(width: 4),
+                            _buildTogglePill('TW', 'Twitch', isDesktop: isDesktop),
+                            const SizedBox(width: 4),
+                            _buildTogglePill('KC', 'Kick', isDesktop: isDesktop),
+                            const SizedBox(width: 4),
+                            _buildTogglePill('YT', 'YouTube', isDesktop: isDesktop),
+                          ],
+                        ),
+                      ),
+                      ..._buildInputsOnlyList(isDesktop: isDesktop),
+                      _buildConnectButton(isDesktop: isDesktop),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Divider(height: 8, color: Color(0xFF242432)),
+                  const Divider(height: 1, color: _borderSubtle),
+                  const SizedBox(height: 6),
+                  // Row 2: Utility Toolbar
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      IconButton(
-                        iconSize: 27,
-                        padding: const EdgeInsets.all(8),
-                        icon: const Icon(Icons.favorite_outline, color: Color(0xFFFE2C55)),
+                      _buildToolbarIconBtn(
+                        icon: Icons.favorite_rounded,
+                        color: const Color(0xFFFE2C55),
+                        label: isDesktop ? 'Support' : null,
                         tooltip: 'Support OmniFeed',
-                        onPressed: _showSupportModal,
+                        onTap: _showSupportModal,
                       ),
-                      IconButton(
-                        iconSize: 27,
-                        padding: const EdgeInsets.all(8),
-                        icon: const Icon(Icons.format_size_rounded, color: Color(0xFF00E5FF)),
-                        tooltip: 'Chat Appearance (Text Size & Color)',
-                        onPressed: _showChatAppearanceModal,
+                      const SizedBox(width: 6),
+                      _buildToolbarIconBtn(
+                        icon: Icons.format_size_rounded,
+                        color: _cyanAccent,
+                        label: isDesktop ? 'Appearance' : null,
+                        tooltip: 'Chat Typography & Colors',
+                        onTap: _showChatAppearanceModal,
                       ),
-                      IconButton(
-                        iconSize: 27,
-                        padding: const EdgeInsets.all(8),
-                        icon: const Icon(Icons.color_lens_outlined, color: Colors.grey),
-                        tooltip: 'Reset Colors',
-                        onPressed: () => setState(() {
+                      const SizedBox(width: 6),
+                      _buildToolbarIconBtn(
+                        icon: Icons.restart_alt_rounded,
+                        color: Colors.white60,
+                        label: isDesktop ? 'Reset Theme' : null,
+                        tooltip: 'Reset Default Colors & Size',
+                        onTap: () => setState(() {
                           _colors.addAll(_factoryColors);
                           _hostColors.clear();
                           _chatTextColor = _defaultChatTextColor;
                           _chatUserColor = _defaultChatUserColor;
-                          _chatFontSize = 11.0;
+                          _chatFontSize = 12.0;
+                          _chatVersion.value++;
                         }),
                       ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      TextButton(
-                        onPressed: _showHelpDialog,
-                        child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
+                      const Spacer(),
+                      InkWell(
+                        onTap: _showHelpDialog,
+                        borderRadius: BorderRadius.circular(6),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          child: Text(
+                            'Manual',
+                            style: TextStyle(color: _cyanAccent, fontSize: 11.5, fontWeight: FontWeight.w700),
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 10),
-                      _buildWhatIsOmniFeedBadge(isDesktop: false),
+                      const SizedBox(width: 6),
+                      _buildWhatIsOmniFeedBadge(isDesktop: isDesktop),
                     ],
                   ),
                 ],
@@ -2626,115 +2667,67 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildLandscapeAccordionDrawer() {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-      child: !_isMenuExpanded
-          ? const SizedBox.shrink()
-          : Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF161620),
-                border: Border(bottom: BorderSide(color: _neonPink, width: 1.0)),
-              ),
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4.0),
-                          child: Row(
-                            children: [
-                              _buildTogglePill('TT', 'TikTok', isDesktop: true),
-                              const SizedBox(width: 6),
-                              _buildTogglePill('TW', 'Twitch', isDesktop: true),
-                              const SizedBox(width: 6),
-                              _buildTogglePill('KC', 'Kick', isDesktop: true),
-                              const SizedBox(width: 6),
-                              _buildTogglePill('YT', 'YouTube', isDesktop: true),
-                            ],
-                          ),
-                        ),
-                        const VerticalDivider(width: 24, indent: 4, endIndent: 4),
-                        ..._buildInputsOnlyList(isDesktop: true),
-                        const SizedBox(width: 4),
-                        _buildConnectButton(isDesktop: true),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Divider(height: 10, color: Color(0xFF242432)),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.favorite_outline, size: 21, color: Color(0xFFFE2C55)),
-                        tooltip: 'Support OmniFeed',
-                        onPressed: _showSupportModal,
-                      ),
-                      const SizedBox(width: 6),
-                      IconButton(
-                        icon: const Icon(Icons.format_size_rounded, size: 21, color: Color(0xFF00E5FF)),
-                        tooltip: 'Chat Appearance (Text Size & Color)',
-                        onPressed: _showChatAppearanceModal,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.color_lens_outlined, size: 21, color: Colors.grey),
-                        tooltip: 'Reset Colors',
-                        onPressed: () => setState(() {
-                          _colors.addAll(_factoryColors);
-                          _hostColors.clear();
-                          _chatTextColor = _defaultChatTextColor;
-                          _chatUserColor = _defaultChatUserColor;
-                          _chatFontSize = 11.0;
-                        }),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: _showHelpDialog,
-                        child: const Text('Need Help?', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 13, fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(width: 10),
-                      _buildWhatIsOmniFeedBadge(isDesktop: true),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+  Widget _buildToolbarIconBtn({
+    required IconData icon,
+    required Color color,
+    String? label,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(7),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: label != null ? 10 : 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: _surfaceElevated,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: _borderSubtle),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: color),
+              if (label != null) ...[
+                const SizedBox(width: 5),
+                Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white70)),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   List<Widget> _buildInputsOnlyList({required bool isDesktop}) {
     return [
       if (_enabled['TT']!)
-        _buildInputCard(
+        _buildCapsuleInput(
           controller: _ttPrimaryInput,
-          label: 'TikTok @',
-          width: isDesktop ? 135 : 120,
+          hint: 'TikTok @handle',
+          width: isDesktop ? 185 : 165,
           platformKey: 'TT',
           isDesktop: isDesktop,
-          extraAction: InkWell(
+          trailingWidget: InkWell(
             onTap: _openHostModal,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(5),
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 6 : 5, vertical: isDesktop ? 2 : 1.5),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFF102A38),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: const Color(0xFF00E5FF), width: 0.8),
+                color: _cyanAccent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: _cyanAccent.withValues(alpha: 0.5), width: 0.8),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.group_add, size: isDesktop ? 14 : 13, color: const Color(0xFF00E5FF)),
-                  const SizedBox(width: 2),
+                  const Icon(Icons.group_add_rounded, size: 12, color: _cyanAccent),
+                  const SizedBox(width: 3),
                   Text(
                     '+${_ttHosts.length > 1 ? _ttHosts.length - 1 : 0}',
-                    style: TextStyle(fontSize: isDesktop ? 11 : 10, color: const Color(0xFF00E5FF), fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 10, color: _cyanAccent, fontWeight: FontWeight.w800),
                   ),
                 ],
               ),
@@ -2742,86 +2735,252 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           ),
         ),
       if (_enabled['TW']!)
-        _buildInputCard(controller: _twInput, label: 'Twitch', width: isDesktop ? 135 : 120, platformKey: 'TW', isDesktop: isDesktop),
+        _buildCapsuleInput(
+          controller: _twInput,
+          hint: 'Twitch channel',
+          width: isDesktop ? 145 : 130,
+          platformKey: 'TW',
+          isDesktop: isDesktop,
+        ),
       if (_enabled['KC']!)
-        _buildInputCard(controller: _kcInput, label: 'Kick', width: isDesktop ? 135 : 120, platformKey: 'KC', isDesktop: isDesktop),
+        _buildCapsuleInput(
+          controller: _kcInput,
+          hint: 'Kick slug',
+          width: isDesktop ? 135 : 120,
+          platformKey: 'KC',
+          isDesktop: isDesktop,
+        ),
       if (_enabled['YT']!)
-        _buildInputCard(controller: _ytInput, label: 'YouTube ID', width: isDesktop ? 135 : 120, platformKey: 'YT', isDesktop: isDesktop),
+        _buildCapsuleInput(
+          controller: _ytInput,
+          hint: 'YouTube Live ID',
+          width: isDesktop ? 150 : 135,
+          platformKey: 'YT',
+          isDesktop: isDesktop,
+        ),
     ];
   }
 
+  Widget _buildCapsuleInput({
+    required TextEditingController controller,
+    required String hint,
+    required double width,
+    required String platformKey,
+    required bool isDesktop,
+    Widget? trailingWidget,
+  }) {
+    final accent = _colors[platformKey]!;
+    return Container(
+      width: width,
+      height: isDesktop ? 36 : 34,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: _bgDeep,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accent.withValues(alpha: 0.45), width: 1),
+      ),
+      child: Row(
+        children: [
+          Tooltip(
+            message: 'Customize $platformKey Accent Color',
+            child: InkWell(
+              onTap: () => _openColorPicker(platformKey),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white70, width: 1),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: TextStyle(fontSize: isDesktop ? 12 : 11.5, color: Colors.white, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(fontSize: isDesktop ? 11.5 : 10.5, color: Colors.white38, fontWeight: FontWeight.normal),
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          if (trailingWidget != null) ...[
+            const SizedBox(width: 4),
+            trailingWidget,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTogglePill(String key, String label, {required bool isDesktop}) {
+    final active = _enabled[key]!;
+    return InkWell(
+      onTap: () => setState(() => _enabled[key] = !active),
+      borderRadius: BorderRadius.circular(6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 5.5 : 4.5),
+        decoration: BoxDecoration(
+          color: active ? _neonPink : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: [
+            if (active)
+              BoxShadow(
+                color: _neonPink.withValues(alpha: 0.35),
+                blurRadius: 8,
+              ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: isDesktop ? 11.5 : 10.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.3,
+            color: active ? Colors.white : Colors.white60,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // CORE HUD PANELS (EVENTS, UNIFIED CHAT, TELEMETRY STATS)
+  // ---------------------------------------------------------------------------
+
   Widget _buildEventsPane() {
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: const Color(0xFF16161D), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _borderSubtle, width: 1),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'EVENTS & ALERTS',
-            style: TextStyle(fontSize: (_chatFontSize * 0.95).clamp(9.0, 16.0), fontWeight: FontWeight.bold, color: Colors.grey),
-          ),
-          const Divider(height: 12),
-          Expanded(
-            child: ListView.builder(
-              controller: _eventsScrollController,
-              itemCount: _events.length,
-              itemBuilder: (c, i) {
-                final ev = _events[i];
-                final isSys = ev.platform == 'SYS';
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22222B),
-                    borderRadius: BorderRadius.circular(4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: const BoxDecoration(
+              color: _surfaceElevated,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
+              border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.bolt_rounded, size: 15, color: _cyanAccent),
+                const SizedBox(width: 6),
+                Text(
+                  'EVENTS & ALERTS',
+                  style: TextStyle(
+                    fontSize: (_chatFontSize * 0.85).clamp(9.5, 14.0),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.7,
+                    color: Colors.white70,
                   ),
-                  child: Row(
-                    children: [
-                      if (isSys)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00E5FF).withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(3),
-                            border: Border.all(color: const Color(0xFF00E5FF), width: 1.0),
-                          ),
-                          child: Text(
-                            'SYS',
-                            style: TextStyle(
-                              color: const Color(0xFF00E5FF),
-                              fontWeight: FontWeight.w900,
-                              fontSize: (_chatFontSize * 0.75).clamp(8.0, 13.0),
-                            ),
-                          ),
-                        )
-                      else
-                        _buildBadge(ev.platform, ev.badgeBg),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              ev.user,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: _chatFontSize,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              ev.text,
-                              style: TextStyle(
-                                fontSize: (_chatFontSize - 1).clamp(8.5, 18.0),
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
+                ),
+                const Spacer(),
+                ValueListenableBuilder<int>(
+                  valueListenable: _eventsVersion,
+                  builder: (_, _, _) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${_events.length}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white54),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ValueListenableBuilder<int>(
+              valueListenable: _eventsVersion,
+              builder: (context, _, _) {
+                if (_events.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'Waiting for gifts & system events...',
+                      style: TextStyle(fontSize: 11.5, color: Colors.white24),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  controller: _eventsScrollController,
+                  padding: const EdgeInsets.all(8),
+                  itemCount: _events.length,
+                  itemBuilder: (c, i) {
+                    final ev = _events[i];
+                    final isSys = ev.platform == 'SYS';
+                    final accentColor = isSys ? _cyanAccent : ev.badgeBg;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: _surfaceElevated,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border(
+                          left: BorderSide(color: accentColor, width: 3),
                         ),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1.5),
+                            child: isSys
+                                ? _buildBadge('SYS', _cyanAccent, isOutline: true)
+                                : _buildBadge(ev.platform, ev.badgeBg),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: (_chatFontSize * 0.95).clamp(10.0, 18.0),
+                                  height: 1.3,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: '${ev.user} ',
+                                    style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                                  ),
+                                  if (ev.host != null && !isSys)
+                                    TextSpan(
+                                      text: '(@${ev.host}) ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: _getColorForHost(ev.host),
+                                        fontSize: (_chatFontSize * 0.85).clamp(9.0, 16.0),
+                                      ),
+                                    ),
+                                  TextSpan(
+                                    text: ev.text,
+                                    style: TextStyle(
+                                      color: isSys ? Colors.white70 : const Color(0xFFFFD600),
+                                      fontWeight: isSys ? FontWeight.normal : FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -2833,77 +2992,159 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Widget _buildChatPane() {
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: const Color(0xFF16161D), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _borderSubtle, width: 1),
+      ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'UNIFIED CHAT',
-                style: TextStyle(fontSize: (_chatFontSize * 0.95).clamp(9.0, 16.0), fontWeight: FontWeight.bold, color: Colors.grey),
-              ),
-              Row(
-                children: [
-                  const Text('Filter: ', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                  _buildFilterCheck('TT', 'TikTok'),
-                  _buildFilterCheck('TW', 'Twitch'),
-                  _buildFilterCheck('KC', 'Kick'),
-                  _buildFilterCheck('YT', 'YouTube'),
-                ],
-              ),
-            ],
-          ),
-          const Divider(height: 12),
-          Expanded(
-            child: ListView.builder(
-              controller: _chatScrollController,
-              itemCount: _chat.length,
-              itemBuilder: (c, i) {
-                final msg = _chat[i];
-                if (!_chatVisible[msg.platform]!) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: const BoxDecoration(
+              color: _surfaceElevated,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
+              border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.forum_rounded, size: 14, color: _cyanAccent),
+                const SizedBox(width: 6),
+                Text(
+                  'UNIFIED CHAT',
+                  style: TextStyle(
+                    fontSize: (_chatFontSize * 0.85).clamp(9.5, 14.0),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.7,
+                    color: Colors.white70,
+                  ),
+                ),
+                const Spacer(),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildBadge(msg.platform, msg.badgeBg),
-                      if (msg.host != null) ...[
-                        const SizedBox(width: 4),
-                        Builder(builder: (ctx) {
-                          final hostColor = _getColorForHost(msg.host);
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: hostColor.withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(3),
-                              border: Border.all(color: hostColor.withValues(alpha: 0.7), width: 0.9),
-                            ),
-                            child: Text(
-                              '@${msg.host}',
-                              style: TextStyle(
-                                fontSize: (_chatFontSize - 2).clamp(8.0, 18.0),
-                                color: hostColor,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
-                      const SizedBox(width: 6),
-                      Text(
-                        '${msg.user}: ',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: _chatFontSize, color: _chatUserColor),
-                      ),
-                      Expanded(
-                        child: SelectableText(
-                          msg.text,
-                          style: TextStyle(fontSize: _chatFontSize, color: _chatTextColor),
-                        ),
-                      ),
+                      _buildFilterChip('TT', 'TT'),
+                      _buildFilterChip('TW', 'TW'),
+                      _buildFilterChip('KC', 'KC'),
+                      _buildFilterChip('YT', 'YT'),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ValueListenableBuilder<int>(
+              valueListenable: _chatVersion,
+              builder: (context, _, _) {
+                if (_chat.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.sensors_rounded, size: 28, color: Colors.white.withValues(alpha: 0.12)),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Connect a live stream to begin ingesting chat',
+                          style: TextStyle(fontSize: 12, color: Colors.white24),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  controller: _chatScrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  itemCount: _chat.length,
+                  itemBuilder: (c, i) {
+                    final msg = _chat[i];
+                    if (!_chatVisible[msg.platform]!) return const SizedBox.shrink();
+
+                    final hostColor = msg.host != null ? _getColorForHost(msg.host) : null;
+                    final isMod = msg.roles.contains('MOD');
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3.5),
+                      child: SelectableText.rich(
+                        TextSpan(
+                          style: TextStyle(
+                            fontSize: _chatFontSize,
+                            height: 1.38,
+                          ),
+                          children: [
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 5),
+                                child: _buildBadge(msg.platform, msg.badgeBg),
+                              ),
+                            ),
+                            if (msg.host != null && hostColor != null)
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 5),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: hostColor.withValues(alpha: 0.14),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: hostColor.withValues(alpha: 0.65), width: 0.9),
+                                    ),
+                                    child: Text(
+                                      '@${msg.host}',
+                                      style: TextStyle(
+                                        fontSize: (_chatFontSize - 2.5).clamp(8.0, 15.0),
+                                        color: hostColor,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (isMod)
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 5),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: _emeraldLive.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(3),
+                                      border: Border.all(color: _emeraldLive.withValues(alpha: 0.7), width: 0.8),
+                                    ),
+                                    child: Text(
+                                      'MOD',
+                                      style: TextStyle(
+                                        fontSize: (_chatFontSize - 3).clamp(7.5, 13.0),
+                                        color: _emeraldLive,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            TextSpan(
+                              text: '${msg.user}: ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: _chatUserColor,
+                              ),
+                            ),
+                            TextSpan(
+                              text: msg.text,
+                              style: TextStyle(
+                                color: _chatTextColor,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -2920,114 +3161,118 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final step = _getScaledVelocityStep(rawCount);
     final isHype = step >= 100 && !isCalibrating;
 
+    Widget gaugeBar = Container(
+      height: 9,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _bgDeep,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: _borderSubtle, width: 0.8),
+      ),
+      child: isCalibrating
+          ? LinearProgressIndicator(
+              backgroundColor: Colors.transparent,
+              valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.25)),
+              borderRadius: BorderRadius.circular(5),
+            )
+          : AnimatedFractionallySizedBox(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.centerLeft,
+              widthFactor: (step / 100).clamp(0.0, 1.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [color.withValues(alpha: 0.7), color],
+                  ),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+            ),
+    );
+
+    if (isHype) {
+      gaugeBar = RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _hypeAnimation,
+          builder: (ctx, child) {
+            return Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(5),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: _hypeAnimation.value * 0.65),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: child,
+            );
+          },
+          child: gaugeBar,
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.only(bottom: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label.startsWith('@') ? label : '@$label',
-                style: TextStyle(
-                  fontSize: (_chatFontSize * 0.9).clamp(9.0, 15.0),
-                  fontWeight: FontWeight.bold,
-                  color: color,
+              Expanded(
+                child: Text(
+                  label.startsWith('@') ? label : '@$label',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: (_chatFontSize * 0.88).clamp(9.5, 14.0),
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
                 ),
               ),
               if (isCalibrating)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 9,
-                      height: 9,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.8)),
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Initializing...',
-                      style: TextStyle(
-                        fontSize: (_chatFontSize * 0.8).clamp(8.0, 13.0),
-                        color: Colors.white54,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Calibrating...',
+                  style: TextStyle(
+                    fontSize: (_chatFontSize * 0.78).clamp(8.5, 12.0),
+                    color: Colors.white38,
+                    fontStyle: FontStyle.italic,
+                  ),
                 )
               else
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isHype)
                       const Padding(
-                        padding: EdgeInsets.only(right: 4.0),
+                        padding: EdgeInsets.only(right: 3.0),
                         child: Text('🔥', style: TextStyle(fontSize: 10)),
                       ),
                     Text(
                       '$step%',
                       style: TextStyle(
-                        fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0),
+                        fontFamily: 'monospace',
+                        fontSize: (_chatFontSize * 0.85).clamp(9.0, 13.5),
                         color: isHype ? Colors.white : Colors.white70,
-                        fontWeight: isHype ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
                 ),
             ],
           ),
-          const SizedBox(height: 3),
-          AnimatedBuilder(
-            animation: _hypeAnimation,
-            builder: (ctx, child) {
-              return Container(
-                height: 10,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF22222E),
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
-                    color: isHype ? color.withValues(alpha: _hypeAnimation.value) : Colors.transparent,
-                    width: 1.0,
-                  ),
-                  boxShadow: [
-                    if (isHype)
-                      BoxShadow(
-                        color: color.withValues(alpha: _hypeAnimation.value * 0.6),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                  ],
-                ),
-                child: isCalibrating
-                    ? Container(
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                      )
-                    : FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: (step / 100).clamp(0.0, 1.0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: isHype ? color : color.withValues(alpha: 0.85),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                        ),
-                      ),
-              );
-            },
-          ),
+          const SizedBox(height: 4),
+          gaugeBar,
         ],
       ),
     );
   }
 
-  Widget _buildStatsPane(String topSupporter) {
+  Widget _buildStatsPane() {
     final List<MapEntry<String, Color>> activeStreams = [];
     if (_enabled['TT']!) {
       for (final h in _ttHosts) {
@@ -3045,81 +3290,228 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     }
 
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: const Color(0xFF16161D), borderRadius: BorderRadius.circular(6)),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      decoration: BoxDecoration(
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _borderSubtle, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: const BoxDecoration(
+              color: _surfaceElevated,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
+              border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
+            ),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'SESSION STATS',
-                  style: TextStyle(
-                    fontSize: (_chatFontSize * 0.95).clamp(9.0, 16.0),
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.insights_rounded, size: 15, color: _cyanAccent),
+                    const SizedBox(width: 6),
+                    Text(
+                      'TELEMETRY',
+                      style: TextStyle(
+                        fontSize: (_chatFontSize * 0.85).clamp(9.5, 14.0),
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.7,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
                 ),
                 InkWell(
                   onTap: _showStatsConfigModal,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(
-                    padding: const EdgeInsets.all(3.0),
-                    child: Icon(Icons.tune_rounded, size: (_chatFontSize * 1.1).clamp(13.0, 18.0), color: const Color(0xFF00E5FF)),
+                  borderRadius: BorderRadius.circular(5),
+                  child: const Padding(
+                    padding: EdgeInsets.all(2.0),
+                    child: Icon(Icons.tune_rounded, size: 15, color: _cyanAccent),
                   ),
                 ),
               ],
             ),
-            const Divider(height: 12),
-            if (_showStopwatch) ...[
-              Text('Session Stopwatch:', style: TextStyle(fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0), color: Colors.grey)),
-              const SizedBox(height: 2),
-              Text(
-                _formatDuration(_sessionSeconds),
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: (_chatFontSize * 1.25).clamp(12.0, 24.0),
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF00E5FF),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (_showTopSupporter) ...[
-              Text('Top Supporter:', style: TextStyle(fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0), color: Colors.grey)),
-              const SizedBox(height: 2),
-              Text(
-                topSupporter,
-                style: TextStyle(
-                  fontSize: (_chatFontSize * 1.1).clamp(10.0, 20.0),
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            Text('Relay Link Status:', style: TextStyle(fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0), color: Colors.grey)),
-            const SizedBox(height: 2),
-            Text(
-              _statusText,
-              style: TextStyle(
-                fontSize: (_chatFontSize * 0.9).clamp(9.0, 15.0),
-                color: _isConnected ? Colors.greenAccent : Colors.white70,
-                fontWeight: FontWeight.w600,
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_showStopwatch) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _surfaceElevated,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _borderSubtle),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'SESSION UPTIME',
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Colors.white54),
+                          ),
+                          const SizedBox(height: 4),
+                          ValueListenableBuilder<int>(
+                            valueListenable: _sessionSecondsNotifier,
+                            builder: (_, secs, _) => Text(
+                              _formatDuration(secs),
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: (_chatFontSize * 1.35).clamp(14.0, 24.0),
+                                fontWeight: FontWeight.w900,
+                                color: _cyanAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_showTopSupporter) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _surfaceElevated,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _borderSubtle),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'TOP SUPPORTER',
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Colors.white54),
+                          ),
+                          const SizedBox(height: 4),
+                          ValueListenableBuilder<String>(
+                            valueListenable: _topSupporterNotifier,
+                            builder: (_, topSupporter, _) => Text(
+                              topSupporter,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: (_chatFontSize * 1.0).clamp(11.0, 18.0),
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _borderSubtle),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'RELAY LINK',
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Colors.white54),
+                        ),
+                        Text(
+                          _statusText.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: _isConnected ? _emeraldLive : Colors.white60,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_showVelocity && activeStreams.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Row(
+                      children: [
+                        Icon(Icons.local_fire_department_rounded, size: 13, color: _neonPink),
+                        SizedBox(width: 4),
+                        Text(
+                          'HYPE METER (30S VELOCITY)',
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Colors.white54),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ValueListenableBuilder<int>(
+                      valueListenable: _velocityTickNotifier,
+                      builder: (_, _, _) => Column(
+                        children: activeStreams.map((e) => _buildVelocityGaugeItem(e.key, e.value)).toList(),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (_showVelocity && activeStreams.isNotEmpty) ...[
-              const Divider(height: 16),
-              Text(
-                'HYPE METER',
-                style: TextStyle(fontSize: (_chatFontSize * 0.85).clamp(8.5, 14.0), fontWeight: FontWeight.bold, color: Colors.grey),
-              ),
-              const SizedBox(height: 6),
-              ...activeStreams.map((e) => _buildVelocityGaugeItem(e.key, e.value)),
-            ],
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String key, String label) {
+    if (!_enabled[key]!) return const SizedBox.shrink();
+    final visible = _chatVisible[key]!;
+    final color = _colors[key]!;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 5),
+      child: InkWell(
+        onTap: () {
+          setState(() => _chatVisible[key] = !visible);
+          _chatVersion.value++;
+        },
+        borderRadius: BorderRadius.circular(5),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+          decoration: BoxDecoration(
+            color: visible ? color.withValues(alpha: 0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(
+              color: visible ? color : Colors.white24,
+              width: 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+              color: visible ? Colors.white : Colors.white38,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBadge(String label, Color color, {bool isOutline = false}) {
+    final isDarkText = color.computeLuminance() > 0.55;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: isOutline ? color.withValues(alpha: 0.15) : color,
+        borderRadius: BorderRadius.circular(4),
+        border: isOutline ? Border.all(color: color, width: 1) : null,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isOutline ? color : (isDarkText ? Colors.black : Colors.white),
+          fontWeight: FontWeight.w900,
+          fontSize: (_chatFontSize - 3).clamp(8.0, 12.0),
+          letterSpacing: 0.3,
         ),
       ),
     );
@@ -3127,10 +3519,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final topSupporter = _gifterScores.isEmpty
-        ? 'No gifts yet'
-        : _gifterScores.entries.reduce((a, b) => a.value > b.value ? a : b).key;
-
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return GestureDetector(
@@ -3142,7 +3530,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           child: Column(
             children: [
               _buildPersistentTopBar(isDesktop: isLandscape),
-              isLandscape ? _buildLandscapeAccordionDrawer() : _buildPortraitAccordionDrawer(),
+              _buildCommandDrawer(isDesktop: isLandscape),
               _buildBottomToggleBar(isDesktop: isLandscape),
               Expanded(
                 child: Padding(
@@ -3154,62 +3542,74 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                             Expanded(flex: 3, child: _buildEventsPane()),
                             const SizedBox(width: 6),
                             Expanded(flex: 5, child: _buildChatPane()),
-                            const SizedBox(width: 2),
-                            Expanded(flex: 2, child: _buildStatsPane(topSupporter)),
+                            const SizedBox(width: 6),
+                            Expanded(flex: 2, child: _buildStatsPane()),
                           ],
                         )
                       : Column(
                           children: [
                             Expanded(flex: 6, child: _buildChatPane()),
                             const SizedBox(height: 6),
+                            // Segmented Pill Bar for Portrait Mode
                             Container(
-                              height: 32,
-                              color: const Color(0xFF16161D),
+                              height: 34,
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: _surfaceCard,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: _borderSubtle),
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
                                     child: InkWell(
                                       onTap: () => setState(() => _portraitTabIndex = 0),
+                                      borderRadius: BorderRadius.circular(6),
                                       child: Container(
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: _portraitTabIndex == 0 ? const Color(0xFF00E5FF) : Colors.transparent,
-                                              width: 2,
-                                            ),
-                                          ),
+                                          color: _portraitTabIndex == 0 ? _surfaceElevated : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: _portraitTabIndex == 0
+                                              ? Border.all(color: _cyanAccent.withValues(alpha: 0.5), width: 1)
+                                              : null,
                                         ),
-                                        child: Text(
-                                          'EVENTS & ALERTS (${_events.length})',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: _portraitTabIndex == 0 ? Colors.white : Colors.grey,
+                                        child: ValueListenableBuilder<int>(
+                                          valueListenable: _eventsVersion,
+                                          builder: (_, _, _) => Text(
+                                            'EVENTS & ALERTS (${_events.length})',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 0.5,
+                                              color: _portraitTabIndex == 0 ? _cyanAccent : Colors.white54,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
+                                  const SizedBox(width: 4),
                                   Expanded(
                                     child: InkWell(
                                       onTap: () => setState(() => _portraitTabIndex = 1),
+                                      borderRadius: BorderRadius.circular(6),
                                       child: Container(
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: _portraitTabIndex == 1 ? const Color(0xFF00E5FF) : Colors.transparent,
-                                              width: 2,
-                                            ),
-                                          ),
+                                          color: _portraitTabIndex == 1 ? _surfaceElevated : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: _portraitTabIndex == 1
+                                              ? Border.all(color: _cyanAccent.withValues(alpha: 0.5), width: 1)
+                                              : null,
                                         ),
                                         child: Text(
-                                          'SESSION STATS',
+                                          'TELEMETRY & HYPE',
                                           style: TextStyle(
                                             fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: _portraitTabIndex == 1 ? Colors.white : Colors.grey,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.5,
+                                            color: _portraitTabIndex == 1 ? _cyanAccent : Colors.white54,
                                           ),
                                         ),
                                       ),
@@ -3221,7 +3621,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                             const SizedBox(height: 6),
                             Expanded(
                               flex: 4,
-                              child: _portraitTabIndex == 0 ? _buildEventsPane() : _buildStatsPane(topSupporter),
+                              child: _portraitTabIndex == 0 ? _buildEventsPane() : _buildStatsPane(),
                             ),
                           ],
                         ),
@@ -3233,128 +3633,4 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       ),
     );
   }
-
-  Widget _buildTogglePill(String key, String label, {required bool isDesktop}) {
-    final active = _enabled[key]!;
-    return InkWell(
-      onTap: () => setState(() => _enabled[key] = !active),
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8, vertical: isDesktop ? 7 : 5),
-        decoration: BoxDecoration(
-          color: active ? _neonPink : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: _neonPink,
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _neonPink.withValues(alpha: active ? 0.35 : 0.12),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: isDesktop ? 12 : 10,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.3,
-            color: active ? _cutoutBg : _neonPink,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInputCard({
-    required TextEditingController controller,
-    required String label,
-    required double width,
-    required String platformKey,
-    required bool isDesktop,
-    Widget? extraAction,
-  }) {
-    return SizedBox(
-      width: width,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: isDesktop ? 40 : 36,
-            child: TextField(
-              controller: controller,
-              style: TextStyle(fontSize: isDesktop ? 12.5 : 11),
-              decoration: InputDecoration(
-                labelText: label,
-                labelStyle: TextStyle(fontSize: isDesktop ? 11.5 : 10),
-                contentPadding: EdgeInsets.symmetric(horizontal: isDesktop ? 10 : 8, vertical: 4),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Color: ', style: TextStyle(fontSize: isDesktop ? 10.5 : 9, color: Colors.grey)),
-              InkWell(
-                onTap: () => _openColorPicker(platformKey),
-                child: Container(
-                  width: isDesktop ? 16 : 14,
-                  height: isDesktop ? 16 : 14,
-                  decoration: BoxDecoration(
-                    color: _colors[platformKey],
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              if (extraAction != null) ...[
-                const SizedBox(width: 6),
-                extraAction,
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterCheck(String key, String label) {
-    if (!_enabled[key]!) return const SizedBox.shrink();
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 22,
-          height: 22,
-          child: Checkbox(
-            value: _chatVisible[key],
-            onChanged: (v) => setState(() => _chatVisible[key] = v ?? true),
-          ),
-        ),
-        Text(label, style: const TextStyle(fontSize: 9)),
-        const SizedBox(width: 4),
-      ],
-    );
-  }
-
-  Widget _buildBadge(String label, Color color) {
-    final isDarkText = color.computeLuminance() > 0.5;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
-      child: Text(
-        label,
-        style: TextStyle(color: isDarkText ? Colors.black : Colors.white, fontWeight: FontWeight.w900, fontSize: 9),
-      ),
-    );
-  }
-}
-
-class ChangeHostModalAlignment {
-  static const MainAxisAlignment spaceBetween = MainAxisAlignment.spaceBetween;
 }
