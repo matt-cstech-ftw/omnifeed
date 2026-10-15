@@ -28,7 +28,10 @@ void main() {
   runApp(const OmniFeedApp());
 }
 
+enum HudConnectionState { standby, connecting, live }
+
 class StreamMessage {
+  final int id;
   final String platform;
   final String user;
   final String text;
@@ -36,6 +39,8 @@ class StreamMessage {
   final String? host;
   final List<String> roles;
   final DateTime timestamp;
+
+  static int _nextId = 1;
 
   StreamMessage({
     required this.platform,
@@ -45,10 +50,67 @@ class StreamMessage {
     this.host,
     this.roles = const [],
     DateTime? timestamp,
-  }) : timestamp = timestamp ?? DateTime.now();
+  })  : id = _nextId++,
+        timestamp = timestamp ?? DateTime.now();
 }
 
-/// Custom vector painter for crisp, zero-dependency platform logos (TikTok, Twitch, Kick, YouTube)
+/// Renders the custom OmniFeed flowing stream-wave & signal emblem inspired by logo.png
+class _OmniBrandMarkPainter extends CustomPainter {
+  const _OmniBrandMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    final cyanPaint = Paint()
+      ..color = const Color(0xFF00F0FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.11
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    final bluePaint = Paint()
+      ..color = const Color(0xFF0077FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.11
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    final violetPaint = Paint()
+      ..color = const Color(0xFF8B3DFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.11
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    // 3 flowing S-curve streams converging into the top-right broadcast node
+    final wave1 = Path()
+      ..moveTo(w * 0.12, h * 0.78)
+      ..cubicTo(w * 0.36, h * 0.72, w * 0.34, h * 0.42, w * 0.64, h * 0.34);
+    final wave2 = Path()
+      ..moveTo(w * 0.22, h * 0.86)
+      ..cubicTo(w * 0.48, h * 0.80, w * 0.44, h * 0.50, w * 0.68, h * 0.40);
+    final wave3 = Path()
+      ..moveTo(w * 0.36, h * 0.92)
+      ..cubicTo(w * 0.58, h * 0.86, w * 0.54, h * 0.58, w * 0.72, h * 0.48);
+
+    canvas.drawPath(wave1, cyanPaint);
+    canvas.drawPath(wave2, bluePaint);
+    canvas.drawPath(wave3, violetPaint);
+
+    // Broadcast signal arcs radiating from top-right
+    final arcRect1 = Rect.fromCircle(center: Offset(w * 0.66, h * 0.36), radius: w * 0.20);
+    final arcRect2 = Rect.fromCircle(center: Offset(w * 0.66, h * 0.36), radius: w * 0.33);
+    canvas.drawArc(arcRect1, -1.3, 1.65, false, bluePaint..strokeWidth = w * 0.09);
+    canvas.drawArc(arcRect2, -1.3, 1.65, false, cyanPaint..strokeWidth = w * 0.09);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Custom vector painter for crisp platform logos (TikTok, Twitch, Kick, YouTube)
 class _PlatformLogoPainter extends CustomPainter {
   final String platform;
   final Color color;
@@ -74,7 +136,6 @@ class _PlatformLogoPainter extends CustomPainter {
           ..strokeJoin = StrokeJoin.round
           ..isAntiAlias = true;
 
-        // Vertical stem + bottom left note loop
         final path = Path()
           ..moveTo(w * 0.60, h * 0.14)
           ..lineTo(w * 0.60, h * 0.66)
@@ -89,7 +150,6 @@ class _PlatformLogoPainter extends CustomPainter {
             clockwise: true,
           );
 
-        // Top right flag curve
         final flagPath = Path()
           ..moveTo(w * 0.60, h * 0.14)
           ..quadraticBezierTo(w * 0.64, h * 0.36, w * 0.86, h * 0.38);
@@ -99,7 +159,6 @@ class _PlatformLogoPainter extends CustomPainter {
         break;
 
       case 'TW':
-        // Twitch speech-bubble glitch shape with two eyes punched out
         final outer = Path()
           ..moveTo(w * 0.22, h * 0.10)
           ..lineTo(w * 0.88, h * 0.10)
@@ -121,21 +180,15 @@ class _PlatformLogoPainter extends CustomPainter {
         break;
 
       case 'KC':
-        // Kick blocky geometric 'K'
         final kPath = Path()
-          // Left vertical bar
           ..addRect(Rect.fromLTWH(w * 0.16, h * 0.12, w * 0.24, h * 0.76))
-          // Center connector block
           ..addRect(Rect.fromLTWH(w * 0.40, h * 0.38, w * 0.18, h * 0.24))
-          // Top-right arm
           ..addRect(Rect.fromLTWH(w * 0.58, h * 0.12, w * 0.26, h * 0.26))
-          // Bottom-right leg
           ..addRect(Rect.fromLTWH(w * 0.58, h * 0.62, w * 0.26, h * 0.26));
         canvas.drawPath(kPath, paint);
         break;
 
       case 'YT':
-        // YouTube rounded screen with center play triangle punched out
         final rrect = RRect.fromRectAndRadius(
           Rect.fromLTWH(w * 0.08, h * 0.18, w * 0.84, h * 0.64),
           Radius.circular(w * 0.18),
@@ -158,6 +211,76 @@ class _PlatformLogoPainter extends CustomPainter {
   }
 }
 
+/// Smooth 180ms slide + fade entry wrapper for newly ingested chat & event items
+class _AnimatedEntryRow extends StatefulWidget {
+  final Widget child;
+  const _AnimatedEntryRow({super.key, required this.child});
+
+  @override
+  State<_AnimatedEntryRow> createState() => _AnimatedEntryRowState();
+}
+
+class _AnimatedEntryRowState extends State<_AnimatedEntryRow> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 180));
+    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+    );
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
+/// Subtle desktop hover highlight row for chat messages
+class _HoverableChatRow extends StatefulWidget {
+  final Widget child;
+  const _HoverableChatRow({required this.child});
+
+  @override
+  State<_HoverableChatRow> createState() => _HoverableChatRowState();
+}
+
+class _HoverableChatRowState extends State<_HoverableChatRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: _hovered ? Colors.white.withValues(alpha: 0.035) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class OmniFeedApp extends StatelessWidget {
   const OmniFeedApp({super.key});
 
@@ -167,18 +290,18 @@ class OmniFeedApp extends StatelessWidget {
       title: 'OmniFeed HUD',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: const Color(0xFF09090D),
-        cardColor: const Color(0xFF12131A),
+        scaffoldBackgroundColor: const Color(0xFF07080C),
+        cardColor: const Color(0xFF0E1017),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00E5FF),
-          secondary: Color(0xFFFF06B5),
-          surface: Color(0xFF12131A),
+          secondary: Color(0xFF0077FF),
+          surface: Color(0xFF0E1017),
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: const Color(0xFF14151E),
+          backgroundColor: const Color(0xFF12141E),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFF26293A), width: 1),
+            side: const BorderSide(color: Color(0xFF232738), width: 1),
           ),
         ),
       ),
@@ -195,20 +318,21 @@ class HudScreen extends StatefulWidget {
 }
 
 class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
-  // Pre-compiled Regular Expressions for hot network paths
   static final RegExp _twitchUserRegex = RegExp(r':(\w+)!');
   static final RegExp _ytMessageRegex = RegExp(
     r'"liveChatTextMessageRenderer":\{"message":\{"runs":\[\{"text":"(.*?)"\}\]\},"authorName":\{"simpleText":"(.*?)"\}',
   );
 
-  // Core Theme Palette
-  static const Color _bgDeep = Color(0xFF09090D);
-  static const Color _surfaceCard = Color(0xFF12131A);
-  static const Color _surfaceElevated = Color(0xFF181A24);
-  static const Color _borderSubtle = Color(0xFF232634);
-  static const Color _neonPink = Color(0xFFFF06B5);
+  // Cohesive Omni-Spectrum Palette (Derived from logo.png)
+  static const Color _bgDeep = Color(0xFF07080C);
+  static const Color _surfaceCard = Color(0xFF0E1017);
+  static const Color _surfaceElevated = Color(0xFF151822);
+  static const Color _borderSubtle = Color(0xFF1E2230);
   static const Color _cyanAccent = Color(0xFF00E5FF);
+  static const Color _azureAccent = Color(0xFF0077FF);
+  static const Color _violetAccent = Color(0xFF8B3DFF);
   static const Color _emeraldLive = Color(0xFF00E676);
+  static const Color _amberConnecting = Color(0xFFFFB300);
 
   final Map<String, bool> _enabled = {
     'TT': true,
@@ -225,38 +349,38 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   };
 
   final Map<String, Color> _colors = {
-    'TT': const Color(0xFF25F4EE),
+    'TT': const Color(0xFF00E5FF),
     'TW': const Color(0xFF9146FF),
     'KC': const Color(0xFF53FC18),
-    'YT': const Color(0xFFFF0033),
+    'YT': const Color(0xFFFF2A4B),
   };
 
   final Map<String, Color> _factoryColors = {
-    'TT': const Color(0xFF25F4EE),
+    'TT': const Color(0xFF00E5FF),
     'TW': const Color(0xFF9146FF),
     'KC': const Color(0xFF53FC18),
-    'YT': const Color(0xFFFF0033),
+    'YT': const Color(0xFFFF2A4B),
   };
 
   final Map<String, Color> _hostColors = {};
   final List<Color> _hostPalette = const [
     Color(0xFF00E5FF),
-    Color(0xFFFF4081),
-    Color(0xFFFFD600),
-    Color(0xFF7C4DFF),
+    Color(0xFF9D4EDD),
+    Color(0xFF3A86FF),
     Color(0xFF00E676),
-    Color(0xFFFF6E40),
+    Color(0xFFFF4081),
+    Color(0xFFFF9E00),
     Color(0xFF40C4FF),
     Color(0xFFE040FB),
   ];
 
   double _chatFontSize = 12.0;
-  Color _chatTextColor = const Color(0xFFEFF1F5);
+  Color _chatTextColor = const Color(0xFFEDEFF5);
   Color _chatUserColor = Colors.white;
-  final Color _defaultChatTextColor = const Color(0xFFEFF1F5);
+  final Color _defaultChatTextColor = const Color(0xFFEDEFF5);
   final Color _defaultChatUserColor = Colors.white;
 
-  // High-frequency data stores + granular ValueNotifiers to prevent full-screen rebuilds
+  // High-frequency data stores + granular ValueNotifiers
   final List<StreamMessage> _chat = [];
   final List<StreamMessage> _events = [];
   final ValueNotifier<int> _chatVersion = ValueNotifier<int>(0);
@@ -269,6 +393,12 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   final Set<String> _promptedHosts = {};
   final Set<String> _ytSeenSignatures = {};
   final Map<String, int> _gifterScores = {};
+
+  // Connection verification & timeout tracking
+  HudConnectionState _connState = HudConnectionState.standby;
+  final Set<String> _verifiedFeeds = {};
+  final Set<String> _pendingFeeds = {};
+  final Map<String, Timer> _handshakeTimeouts = {};
 
   final Map<String, DateTime> _hostConnectedAt = {};
   final Map<String, List<DateTime>> _messageTimestamps = {};
@@ -302,15 +432,16 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   WebSocketChannel? _twitchChannel;
   WebSocketChannel? _kickChannel;
   Timer? _ytTimer;
-  bool _isConnected = false;
-  String _statusText = 'Idle';
+  String _statusText = 'Standby';
+
+  bool get _isActiveOrConnecting => _connState != HudConnectionState.standby;
 
   @override
   void initState() {
     super.initState();
     _hypeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 750),
+      duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
 
     _hypeAnimation = Tween<double>(begin: 0.35, end: 1.0).animate(
@@ -318,7 +449,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
 
     _velocityTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (_isConnected && mounted) {
+      if (_connState == HudConnectionState.live && mounted) {
         _pruneOldTimestamps();
         _velocityTickNotifier.value++;
       }
@@ -351,11 +482,123 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _markHostConnected(String key) {
-    final clean = key.toLowerCase().replaceAll('@', '').trim();
-    _hostConnectedAt[clean] = DateTime.now();
-    _messageTimestamps[clean] = [];
+  void _showToast(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        backgroundColor: isError ? const Color(0xFF28121B) : _surfaceElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: isError ? const Color(0xFFFE2C55) : _cyanAccent,
+            width: 1,
+          ),
+        ),
+        duration: const Duration(seconds: 4),
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: isError ? const Color(0xFFFE2C55) : _cyanAccent,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _startPendingHandshake(String feedKey, String displayLabel, VoidCallback onTimeoutAbort) {
+    final clean = feedKey.toLowerCase();
+    _pendingFeeds.add(clean);
+    _handshakeTimeouts[clean]?.cancel();
+    _handshakeTimeouts[clean] = Timer(const Duration(seconds: 12), () {
+      if (_pendingFeeds.contains(clean) && !_verifiedFeeds.contains(clean)) {
+        _pendingFeeds.remove(clean);
+        onTimeoutAbort();
+        _addEvent(StreamMessage(
+          platform: 'SYS',
+          user: 'Connection Timeout',
+          text: 'Could not find an active live stream for $displayLabel. Check the username or verify they are currently live.',
+          badgeBg: Colors.redAccent,
+        ));
+        _showToast('Could not connect to $displayLabel (offline or not found).');
+        _evaluateOverallConnectionState();
+      }
+    });
+  }
+
+  void _markFeedVerified(String feedKey, {String? velocityKey}) {
+    final clean = feedKey.toLowerCase();
+    _handshakeTimeouts.remove(clean)?.cancel();
+    _pendingFeeds.remove(clean);
+    _verifiedFeeds.add(clean);
+
+    if (velocityKey != null) {
+      final vClean = velocityKey.toLowerCase().replaceAll('@', '').trim();
+      _hostConnectedAt[vClean] = DateTime.now();
+      _messageTimestamps[vClean] = [];
+    }
+
+    if (_connState != HudConnectionState.live && mounted) {
+      setState(() {
+        _connState = HudConnectionState.live;
+        _statusText = 'Connected';
+        _isMenuExpanded = false;
+      });
+      _startStopwatchIfNotRunning();
+    }
     _velocityTickNotifier.value++;
+  }
+
+  void _markFeedFailed(String feedKey) {
+    final clean = feedKey.toLowerCase();
+    _handshakeTimeouts.remove(clean)?.cancel();
+    _pendingFeeds.remove(clean);
+    _verifiedFeeds.remove(clean);
+    _evaluateOverallConnectionState();
+  }
+
+  void _evaluateOverallConnectionState() {
+    if (!mounted) return;
+    if (_verifiedFeeds.isEmpty && _pendingFeeds.isEmpty) {
+      _stopwatchTimer?.cancel();
+      setState(() {
+        _connState = HudConnectionState.standby;
+        _statusText = 'Standby';
+        _isMenuExpanded = true;
+      });
+      _sessionSecondsNotifier.value = 0;
+      _velocityTickNotifier.value++;
+    } else if (_verifiedFeeds.isNotEmpty && _connState != HudConnectionState.live) {
+      setState(() {
+        _connState = HudConnectionState.live;
+        _statusText = 'Connected';
+      });
+    }
+  }
+
+  void _startStopwatchIfNotRunning() {
+    if (_stopwatchTimer != null && _stopwatchTimer!.isActive) return;
+    _stopwatchTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_connState == HudConnectionState.live && mounted) {
+        _sessionSecondsNotifier.value++;
+      }
+    });
   }
 
   bool _isHostCalibrating(String key) {
@@ -929,13 +1172,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             if (key.isNotEmpty) {
               await _fetchAndShowAdminStats(key);
             } else {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
-                  backgroundColor: Colors.redAccent,
-                ),
-              );
+              _showToast('ACCESS DENIED');
             }
           }),
         ],
@@ -954,22 +1191,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         if (!mounted) return;
         _displayAdminDashboard(data);
       } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+        _showToast('ACCESS DENIED');
       }
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ACCESS DENIED', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      _showToast('ACCESS DENIED');
     }
   }
 
@@ -1341,13 +1566,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E141D),
+                    color: _surfaceElevated,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.35)),
+                    border: Border.all(color: _cyanAccent.withValues(alpha: 0.3)),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.favorite_rounded, color: Color(0xFFFE2C55), size: 20),
+                      Icon(Icons.favorite_rounded, color: _cyanAccent, size: 20),
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -1635,42 +1860,51 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   // ---------------------------------------------------------------------------
-  // STREAM INGESTION & RELAY LOGIC
+  // STREAM INGESTION, PRE-FLIGHT VALIDATION & TIMEOUTS
   // ---------------------------------------------------------------------------
+
+  bool _hasValidConfiguredInputs() {
+    if (_enabled['TT']! && (_ttPrimaryInput.text.trim().replaceAll('@', '').isNotEmpty || _ttHosts.isNotEmpty)) {
+      return true;
+    }
+    if (_enabled['TW']! && _twInput.text.trim().isNotEmpty) return true;
+    if (_enabled['KC']! && _kcInput.text.trim().isNotEmpty) return true;
+    if (_enabled['YT']! && _ytInput.text.trim().isNotEmpty) return true;
+    return false;
+  }
 
   void _toggleConnection() {
     FocusManager.instance.primaryFocus?.unfocus();
 
-    if (_isConnected) {
+    if (_isActiveOrConnecting) {
       _disconnectAll();
       _stopwatchTimer?.cancel();
       _hostConnectedAt.clear();
       _messageTimestamps.clear();
       _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'All telemetry feeds disconnected', badgeBg: _cyanAccent));
       setState(() {
-        _isConnected = false;
-        _statusText = 'Disconnected';
+        _connState = HudConnectionState.standby;
+        _statusText = 'Standby';
       });
       _sessionSecondsNotifier.value = 0;
       _velocityTickNotifier.value++;
       return;
     }
 
+    // Pre-flight validation: block empty connections
+    if (!_hasValidConfiguredInputs()) {
+      setState(() => _isMenuExpanded = true);
+      _showToast('Please enter at least one channel username or video ID before connecting.');
+      return;
+    }
+
     _saveHandles();
 
     setState(() {
-      _isConnected = true;
-      _statusText = 'Connected';
-      _isMenuExpanded = false;
+      _connState = HudConnectionState.connecting;
+      _statusText = 'Connecting...';
     });
     _sessionSecondsNotifier.value = 0;
-
-    _stopwatchTimer?.cancel();
-    _stopwatchTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_isConnected && mounted) {
-        _sessionSecondsNotifier.value++;
-      }
-    });
 
     _connectStreams();
   }
@@ -1679,6 +1913,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final clean = handle.toLowerCase().replaceAll('@', '').trim();
     _hostConnectedAt.remove(clean);
     _messageTimestamps.remove(clean);
+    _handshakeTimeouts.remove('tt:$clean')?.cancel();
+    _pendingFeeds.remove('tt:$clean');
+    _verifiedFeeds.remove('tt:$clean');
+
     if (kIsWeb) {
       final ch = _ttWebChannelsMap.remove(clean);
       try {
@@ -1690,10 +1928,18 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         cl?.disconnect();
       } catch (_) {}
     }
+    _evaluateOverallConnectionState();
     _velocityTickNotifier.value++;
   }
 
   void _disconnectAll() {
+    for (final timer in _handshakeTimeouts.values) {
+      timer.cancel();
+    }
+    _handshakeTimeouts.clear();
+    _pendingFeeds.clear();
+    _verifiedFeeds.clear();
+
     for (final cl in _ttClientsMap.values) {
       try {
         cl.disconnect();
@@ -1752,30 +1998,36 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   void _attachSingleTikTokHost(String handle) {
     final cleanHandle = handle.replaceAll('@', '').trim();
-    if (_ttHosts.contains(cleanHandle)) return;
+    if (cleanHandle.isEmpty || _ttHosts.contains(cleanHandle)) return;
 
     setState(() {
       _ttHosts.add(cleanHandle);
       _getColorForHost(cleanHandle);
     });
 
-    _markHostConnected(cleanHandle);
-
     if (kIsWeb) {
       _connectTikTokWebRelay(cleanHandle);
       return;
     }
+
+    final feedKey = 'tt:${cleanHandle.toLowerCase()}';
+    _startPendingHandshake(feedKey, 'TikTok @$cleanHandle', () {
+      _disconnectSingleHost(cleanHandle);
+      if (mounted) {
+        setState(() => _ttHosts.removeWhere((h) => h.toLowerCase() == cleanHandle.toLowerCase()));
+      }
+    });
 
     runZonedGuarded(() async {
       final client = TikTokLiveClient(cleanHandle);
       _ttClientsMap[cleanHandle.toLowerCase()] = client;
 
       client.on(EventType.connected, (evt) {
-        _markHostConnected(cleanHandle);
+        _markFeedVerified(feedKey, velocityKey: cleanHandle);
         _addEvent(StreamMessage(
           platform: 'SYS',
           user: 'System',
-          text: 'Connected to co-host @$cleanHandle',
+          text: 'Connected to TikTok @$cleanHandle',
           badgeBg: _cyanAccent,
           host: cleanHandle,
         ));
@@ -1821,14 +2073,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       });
 
       await client.connect();
-    }, (error, stack) {});
+    }, (error, stack) {
+      _markFeedFailed(feedKey);
+    });
   }
 
   void _connectTikTokWebRelay(String handle) {
     final cleanHandle = handle.replaceAll('@', '').trim();
+    final feedKey = 'tt:${cleanHandle.toLowerCase()}';
     final bridgeUri = Uri.parse('wss://omnifeed-relay.onrender.com/ws');
-
-    _markHostConnected(cleanHandle);
 
     _addEvent(StreamMessage(
       platform: 'SYS',
@@ -1836,6 +2089,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       text: 'Connecting to Cloud Relay for @$cleanHandle...',
       badgeBg: _cyanAccent,
     ));
+
+    _startPendingHandshake(feedKey, 'TikTok @$cleanHandle', () {
+      _disconnectSingleHost(cleanHandle);
+      if (mounted) {
+        setState(() => _ttHosts.removeWhere((h) => h.toLowerCase() == cleanHandle.toLowerCase()));
+      }
+    });
 
     try {
       final channel = WebSocketChannel.connect(bridgeUri);
@@ -1848,7 +2108,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         final event = data['event'];
 
         if (event == 'connected') {
-          _markHostConnected(cleanHandle);
+          _markFeedVerified(feedKey, velocityKey: cleanHandle);
           _addEvent(StreamMessage(
             platform: 'SYS',
             user: 'System',
@@ -1857,6 +2117,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             host: data['handle'],
           ));
         } else if (event == 'chat') {
+          if (!_verifiedFeeds.contains(feedKey)) {
+            _markFeedVerified(feedKey, velocityKey: cleanHandle);
+          }
           final hostKey = data['host']?.toString() ?? cleanHandle;
           _recordMessageForVelocity(hostKey);
           _addChat(StreamMessage(
@@ -1894,38 +2157,27 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           final code = data['code'];
           final msg = data['message']?.toString() ?? 'Relay Error';
 
+          _disconnectSingleHost(cleanHandle);
+          setState(() {
+            _ttHosts.removeWhere((h) => h.toLowerCase() == cleanHandle.toLowerCase());
+          });
+
           if (code == 403) {
-            _disconnectSingleHost(cleanHandle);
-            setState(() {
-              _ttHosts.removeWhere((h) => h.toLowerCase() == cleanHandle.toLowerCase());
-            });
             _addEvent(StreamMessage(
               platform: 'SYS',
               user: 'Blocked',
               text: msg,
               badgeBg: Colors.redAccent,
             ));
-
-            final bool hasOtherTikTok = _ttWebChannelsMap.isNotEmpty || _ttClientsMap.isNotEmpty;
-            final bool hasOtherFeeds = _twitchChannel != null || _kickChannel != null || _ytTimer != null;
-
-            if (!hasOtherTikTok && !hasOtherFeeds) {
-              _stopwatchTimer?.cancel();
-              setState(() {
-                _isConnected = false;
-                _statusText = 'Opted Out';
-              });
-              _sessionSecondsNotifier.value = 0;
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(msg, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    backgroundColor: Colors.redAccent.shade700,
-                    duration: const Duration(seconds: 5),
-                  ),
-                );
-              }
-            }
+            _showToast(msg);
+          } else if (code == 404) {
+            _addEvent(StreamMessage(
+              platform: 'SYS',
+              user: 'Offline / Not Found',
+              text: msg,
+              badgeBg: Colors.redAccent,
+            ));
+            _showToast(msg);
           } else if (code == 503 || msg.contains('capacity')) {
             _showAtCapacityModal();
             _addEvent(StreamMessage(
@@ -1943,8 +2195,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               badgeBg: Colors.redAccent,
             ));
           }
+          _evaluateOverallConnectionState();
         }
       }, onError: (err) {
+        _markFeedFailed(feedKey);
         final errStr = err.toString();
         if (errStr.contains('503') || errStr.contains('capacity')) {
           _showAtCapacityModal();
@@ -1957,8 +2211,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           text: 'Relay connection error: $err',
           badgeBg: Colors.redAccent,
         ));
+      }, onDone: () {
+        if (_pendingFeeds.contains(feedKey) && !_verifiedFeeds.contains(feedKey)) {
+          _markFeedFailed(feedKey);
+          _showToast('TikTok @$cleanHandle connection closed before stream handshake.');
+        }
       });
     } catch (e) {
+      _markFeedFailed(feedKey);
       _showUpdatingModal();
       _addEvent(StreamMessage(
         platform: 'SYS',
@@ -1986,85 +2246,31 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           }
         }
         _getColorForHost(prim);
-        _markHostConnected(prim);
       }
 
       if (kIsWeb) {
-        for (final handle in _ttHosts) {
+        for (final handle in List<String>.from(_ttHosts)) {
           _connectTikTokWebRelay(handle);
         }
       } else {
-        for (final handle in _ttHosts) {
-          _markHostConnected(handle);
-          runZonedGuarded(() async {
-            final client = TikTokLiveClient(handle);
-            _ttClientsMap[handle.toLowerCase()] = client;
-
-            _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connecting to @$handle...', badgeBg: _cyanAccent));
-
-            client.on(EventType.connected, (evt) {
-              _markHostConnected(handle);
-              _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to @$handle', badgeBg: _cyanAccent, host: handle));
-            });
-
-            client.on(EventType.chat, (evt) {
-              final data = evt.data as Map<String, dynamic>?;
-              final userMap = data?['user'] as Map<String, dynamic>?;
-              final sender = userMap?['nickname']?.toString() ?? userMap?['uniqueId']?.toString() ?? 'TikTokUser';
-              final comment = data?['content']?.toString() ?? '';
-              final isMod = userMap?['isModerator'] == true;
-
-              if (comment.isNotEmpty) {
-                _recordMessageForVelocity(handle);
-                _addChat(StreamMessage(
-                  platform: 'TT',
-                  user: sender,
-                  text: comment,
-                  badgeBg: _colors['TT']!,
-                  host: _ttHosts.length > 1 ? handle : null,
-                  roles: [if (isMod) 'MOD'],
-                ));
-              }
-            });
-
-            client.on(EventType.gift, (evt) {
-              final data = evt.data as Map<String, dynamic>?;
-              final userMap = data?['user'] as Map<String, dynamic>?;
-              final sender = userMap?['nickname']?.toString() ?? userMap?['uniqueId']?.toString() ?? 'TikTokUser';
-              final giftMap = data?['gift'] as Map<String, dynamic>?;
-              final giftName = giftMap?['name']?.toString() ?? 'Gift';
-              final count = int.tryParse(data?['repeatCount']?.toString() ?? '1') ?? 1;
-              final diamondCount = int.tryParse(giftMap?['diamondCount']?.toString() ?? '1') ?? 1;
-
-              _recordGift(sender, diamondCount * count);
-              _addEvent(StreamMessage(
-                platform: 'TT',
-                user: sender,
-                text: 'sent $count x $giftName',
-                badgeBg: _getColorForHost(handle),
-                host: _ttHosts.length > 1 ? handle : null,
-              ));
-            });
-
-            try {
-              await client.connect();
-            } catch (e) {
-              _addEvent(StreamMessage(platform: 'SYS', user: 'Error', text: 'TT @$handle: $e', badgeBg: Colors.redAccent));
-            }
-          }, (error, stack) {
-            if (!error.toString().contains('Software caused connection abort')) {
-              _addEvent(StreamMessage(platform: 'SYS', user: 'Error', text: 'TT @$handle: $error', badgeBg: Colors.redAccent));
-            }
-          });
+        for (final handle in List<String>.from(_ttHosts)) {
+          _attachSingleTikTokHost(handle);
         }
       }
     }
 
     // 2. Twitch Ingestion
     if (_enabled['TW']!) {
-      final user = _twInput.text.trim().toLowerCase();
+      final user = _twInput.text.trim().replaceAll('@', '').toLowerCase();
       if (user.isNotEmpty) {
-        _markHostConnected('Twitch');
+        const feedKey = 'tw:main';
+        _startPendingHandshake(feedKey, 'Twitch #$user', () {
+          try {
+            _twitchChannel?.sink.close();
+          } catch (_) {}
+          _twitchChannel = null;
+        });
+
         try {
           _twitchChannel = WebSocketChannel.connect(Uri.parse('wss://irc-ws.chat.twitch.tv:443'));
           _twitchChannel!.sink.add('CAP REQ :twitch.tv/tags twitch.tv/commands');
@@ -2072,13 +2278,22 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           _twitchChannel!.sink.add('NICK justinfan${10000 + DateTime.now().millisecond}');
           _twitchChannel!.sink.add('JOIN #$user');
 
-          _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Twitch #$user', badgeBg: _cyanAccent));
-
           _twitchChannel!.stream.listen((raw) {
             final msg = raw.toString();
             if (msg.startsWith('PING')) {
               _twitchChannel!.sink.add('PONG :tmi.twitch.tv');
+            } else if (msg.contains('ROOMSTATE') || msg.contains('366')) {
+              if (!_verifiedFeeds.contains(feedKey)) {
+                _markFeedVerified(feedKey, velocityKey: 'Twitch');
+                _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Twitch #$user', badgeBg: _cyanAccent));
+              }
+            } else if (msg.contains('msg_channel_suspended') || msg.contains('tos_ban')) {
+              _markFeedFailed(feedKey);
+              _showToast('Twitch channel #$user is unavailable or suspended.');
             } else if (msg.contains('PRIVMSG')) {
+              if (!_verifiedFeeds.contains(feedKey)) {
+                _markFeedVerified(feedKey, velocityKey: 'Twitch');
+              }
               final parts = msg.split(' :');
               if (parts.length >= 3) {
                 final text = parts.sublist(2).join(' :').trim();
@@ -2096,16 +2311,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 ));
               }
             }
-          }, onError: (_) {});
-        } catch (_) {}
+          }, onError: (_) {
+            _markFeedFailed(feedKey);
+          });
+        } catch (_) {
+          _markFeedFailed(feedKey);
+        }
       }
     }
 
     // 3. Kick Ingestion
     if (_enabled['KC']!) {
-      final kickSlug = _kcInput.text.trim().toLowerCase();
+      final kickSlug = _kcInput.text.trim().replaceAll('@', '').toLowerCase();
       if (kickSlug.isNotEmpty) {
-        _markHostConnected('Kick');
         _connectKick(kickSlug);
       }
     }
@@ -2114,13 +2332,20 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     if (_enabled['YT']!) {
       final ytId = _ytInput.text.trim();
       if (ytId.isNotEmpty) {
-        _markHostConnected('YouTube');
         _startYTPolling(ytId);
       }
     }
   }
 
   Future<void> _connectKick(String slug) async {
+    const feedKey = 'kc:main';
+    _startPendingHandshake(feedKey, 'Kick #$slug', () {
+      try {
+        _kickChannel?.sink.close();
+      } catch (_) {}
+      _kickChannel = null;
+    });
+
     try {
       final res = await http.get(
         Uri.parse('https://kick.com/api/v2/channels/$slug'),
@@ -2130,7 +2355,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final chatroomId = data['chatroom']?['id'];
-        if (chatroomId == null) return;
+        if (chatroomId == null) {
+          _markFeedFailed(feedKey);
+          _showToast('Kick channel "$slug" does not have an active chatroom.');
+          return;
+        }
 
         _kickChannel = WebSocketChannel.connect(
           Uri.parse('wss://ws-us2.pusher.com/app/eb1d5f28308142926088?protocol=7&client=js&version=7.6.0&flash=false'),
@@ -2141,6 +2370,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           'data': {'auth': '', 'channel': 'chatrooms.$chatroomId.v2'}
         }));
 
+        _markFeedVerified(feedKey, velocityKey: 'Kick');
         _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to Kick #$slug', badgeBg: _cyanAccent));
 
         _kickChannel!.stream.listen((raw) {
@@ -2158,22 +2388,44 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               badgeBg: _colors['KC']!,
             ));
           }
-        }, onError: (_) {});
+        }, onError: (_) {
+          _markFeedFailed(feedKey);
+        });
+      } else {
+        _markFeedFailed(feedKey);
+        _addEvent(StreamMessage(
+          platform: 'SYS',
+          user: 'Not Found',
+          text: 'Kick channel "$slug" was not found (HTTP ${res.statusCode}).',
+          badgeBg: Colors.redAccent,
+        ));
+        _showToast('Kick channel "$slug" was not found.');
       }
-    } catch (_) {}
+    } catch (_) {
+      _markFeedFailed(feedKey);
+      _showToast('Could not verify Kick channel "$slug".');
+    }
   }
 
   void _startYTPolling(String channelOrVideoId) {
-    _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Polling YouTube Live stream', badgeBg: _cyanAccent));
+    const feedKey = 'yt:main';
+    final cleanId = channelOrVideoId.replaceAll('https://www.youtube.com/watch?v=', '').trim();
 
-    _ytTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+    _startPendingHandshake(feedKey, 'YouTube ($cleanId)', () {
+      _ytTimer?.cancel();
+      _ytTimer = null;
+    });
+
+    Future<void> pollOnce() async {
       try {
-        final cleanId = channelOrVideoId.replaceAll('https://www.youtube.com/watch?v=', '');
         final url = 'https://www.youtube.com/live_chat?v=$cleanId';
         final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'Mozilla/5.0'});
-        if (res.statusCode == 200) {
-          final body = res.body;
-          final matches = _ytMessageRegex.allMatches(body);
+        if (res.statusCode == 200 && res.body.contains('liveChatRenderer')) {
+          if (!_verifiedFeeds.contains(feedKey)) {
+            _markFeedVerified(feedKey, velocityKey: 'YouTube');
+            _addEvent(StreamMessage(platform: 'SYS', user: 'System', text: 'Connected to YouTube Live ($cleanId)', badgeBg: _cyanAccent));
+          }
+          final matches = _ytMessageRegex.allMatches(res.body);
           for (final m in matches) {
             final text = m.group(1) ?? '';
             final sender = m.group(2) ?? 'YTUser';
@@ -2191,9 +2443,23 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               ));
             }
           }
+        } else if (!_verifiedFeeds.contains(feedKey)) {
+          _ytTimer?.cancel();
+          _ytTimer = null;
+          _markFeedFailed(feedKey);
+          _addEvent(StreamMessage(
+            platform: 'SYS',
+            user: 'Not Found',
+            text: 'YouTube Live stream "$cleanId" is not active or could not be found.',
+            badgeBg: Colors.redAccent,
+          ));
+          _showToast('YouTube Live ID "$cleanId" is not an active live stream.');
         }
       } catch (_) {}
-    });
+    }
+
+    pollOnce();
+    _ytTimer = Timer.periodic(const Duration(seconds: 4), (_) => pollOnce());
   }
 
   void _recordGift(String user, int value) {
@@ -2307,7 +2573,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                               _ttHosts.add(val);
                               _getColorForHost(val);
                             });
-                            if (_isConnected) {
+                            if (_isActiveOrConnecting) {
                               _attachSingleTikTokHost(val);
                             }
                             setMState(() {});
@@ -2400,39 +2666,161 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   Widget _buildBrandLogo({bool isDesktop = false}) {
     return InkWell(
       onTap: _onLogoTapped,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 5 : 3.5),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 10 : 8, vertical: isDesktop ? 4.5 : 3.5),
         decoration: BoxDecoration(
-          color: const Color(0xFF1B1B24),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF2E2E3D), width: 1),
+          color: _surfaceElevated,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _borderSubtle, width: 1),
         ),
-        child: RichText(
-          text: TextSpan(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CustomPaint(
+              size: Size(isDesktop ? 20 : 17, isDesktop ? 20 : 17),
+              painter: const _OmniBrandMarkPainter(),
+            ),
+            const SizedBox(width: 7),
+            RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'OMNI',
+                    style: TextStyle(
+                      fontFamily: 'Orbitron',
+                      fontSize: isDesktop ? 16 : 14,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'FEED',
+                    style: TextStyle(
+                      fontFamily: 'Orbitron',
+                      fontSize: isDesktop ? 20 : 17.5,
+                      color: _cyanAccent,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusPill({required bool isDesktop}) {
+    Color dotColor;
+    String label;
+    switch (_connState) {
+      case HudConnectionState.live:
+        dotColor = _emeraldLive;
+        label = 'LIVE';
+        break;
+      case HudConnectionState.connecting:
+        dotColor = _amberConnecting;
+        label = 'CONNECTING';
+        break;
+      case HudConnectionState.standby:
+        dotColor = Colors.white38;
+        label = 'STANDBY';
+        break;
+    }
+
+    return AnimatedBuilder(
+      animation: _hypeAnimation,
+      builder: (context, _) {
+        final isPulsing = _connState != HudConnectionState.standby;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: isPulsing ? dotColor.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isPulsing ? dotColor.withValues(alpha: 0.45) : _borderSubtle,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              TextSpan(
-                text: 'OMNI',
-                style: TextStyle(
-                  fontFamily: 'Orbitron',
-                  fontSize: isDesktop ? 18 : 15,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
+              Container(
+                width: 6.5,
+                height: 6.5,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    if (isPulsing)
+                      BoxShadow(
+                        color: dotColor.withValues(alpha: _hypeAnimation.value * 0.8),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      ),
+                  ],
                 ),
               ),
-              TextSpan(
-                text: 'FEED',
+              const SizedBox(width: 6),
+              Text(
+                label,
                 style: TextStyle(
-                  fontFamily: 'Orbitron',
-                  fontSize: isDesktop ? 22 : 19,
-                  color: _cyanAccent,
+                  fontSize: isDesktop ? 10 : 9,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
+                  letterSpacing: 0.7,
+                  color: isPulsing ? dotColor : Colors.white54,
                 ),
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDrawerTogglePill({required bool isDesktop}) {
+    return InkWell(
+      onTap: () => setState(() => _isMenuExpanded = !_isMenuExpanded),
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 6 : 5),
+        decoration: BoxDecoration(
+          color: _isMenuExpanded ? _cyanAccent.withValues(alpha: 0.14) : _surfaceElevated,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: _isMenuExpanded ? _cyanAccent.withValues(alpha: 0.5) : _borderSubtle,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.tune_rounded,
+              size: isDesktop ? 14 : 13,
+              color: _isMenuExpanded ? _cyanAccent : Colors.white70,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              isDesktop ? (_isMenuExpanded ? 'Hide Controls' : 'Configure Streams') : 'Streams',
+              style: TextStyle(
+                fontSize: isDesktop ? 11.5 : 10.5,
+                fontWeight: FontWeight.w700,
+                color: _isMenuExpanded ? _cyanAccent : Colors.white70,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(
+              _isMenuExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+              size: 15,
+              color: _isMenuExpanded ? _cyanAccent : Colors.white54,
+            ),
+          ],
         ),
       ),
     );
@@ -2443,26 +2831,27 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
       onTap: _handleInstallButton,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 9, vertical: isDesktop ? 6 : 5),
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 6 : 5),
         decoration: BoxDecoration(
-          color: _cyanAccent.withValues(alpha: 0.1),
+          color: _surfaceElevated,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _cyanAccent.withValues(alpha: 0.55), width: 1),
+          border: Border.all(color: _borderSubtle, width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.install_mobile_rounded, size: isDesktop ? 15 : 13.5, color: _cyanAccent),
-            const SizedBox(width: 5),
-            Text(
-              'Install App',
-              style: TextStyle(
-                fontSize: isDesktop ? 11.5 : 10.5,
-                color: _cyanAccent,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
+            Icon(Icons.install_mobile_rounded, size: isDesktop ? 14 : 13, color: _cyanAccent),
+            if (isDesktop) ...[
+              const SizedBox(width: 5),
+              const Text(
+                'Install App',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -2496,6 +2885,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildConnectButton({bool isDesktop = false}) {
+    final isConnecting = _connState == HudConnectionState.connecting;
+    final isLive = _connState == HudConnectionState.live;
+    final isActive = isConnecting || isLive;
+
     return InkWell(
       onTap: _toggleConnection,
       borderRadius: BorderRadius.circular(8),
@@ -2504,36 +2897,57 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         height: isDesktop ? 36 : 34,
         padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 13),
         decoration: BoxDecoration(
-          color: _isConnected ? const Color(0xFF28121B) : _cyanAccent,
+          gradient: isActive
+              ? null
+              : const LinearGradient(
+                  colors: [_cyanAccent, _azureAccent],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+          color: isActive ? const Color(0xFF26121A) : null,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: _isConnected ? const Color(0xFFFE2C55) : _cyanAccent,
-            width: 1.2,
+            color: isActive ? const Color(0xFFFE2C55).withValues(alpha: 0.8) : _cyanAccent,
+            width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: (_isConnected ? const Color(0xFFFE2C55) : _cyanAccent).withValues(alpha: 0.28),
+              color: (isActive ? const Color(0xFFFE2C55) : _cyanAccent).withValues(alpha: 0.22),
               blurRadius: 10,
-              spreadRadius: 0.5,
             ),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              _isConnected ? Icons.power_settings_new_rounded : Icons.bolt_rounded,
-              size: isDesktop ? 15 : 14,
-              color: _isConnected ? const Color(0xFFFE2C55) : Colors.black,
-            ),
-            const SizedBox(width: 5),
+            if (isConnecting)
+              const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
+                  ),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(right: 5),
+                child: Icon(
+                  isActive ? Icons.power_settings_new_rounded : Icons.bolt_rounded,
+                  size: isDesktop ? 15 : 14,
+                  color: isActive ? const Color(0xFFFE2C55) : Colors.black,
+                ),
+              ),
             Text(
-              _isConnected ? 'DISCONNECT' : 'CONNECT',
+              isConnecting ? 'CANCEL' : (isLive ? 'DISCONNECT' : 'CONNECT'),
               style: TextStyle(
                 fontSize: isDesktop ? 11.5 : 10.5,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.6,
-                color: _isConnected ? const Color(0xFFFE2C55) : Colors.black,
+                color: isActive ? const Color(0xFFFE2C55) : Colors.black,
               ),
             ),
           ],
@@ -2544,54 +2958,18 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
 
   Widget _buildPersistentTopBar({required bool isDesktop}) {
     return Container(
-      height: isDesktop ? 50 : 46,
+      height: isDesktop ? 52 : 48,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: const BoxDecoration(
-        color: Color(0xFF0E0F16),
+        color: _surfaceCard,
         border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
           _buildBrandLogo(isDesktop: isDesktop),
           const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-            decoration: BoxDecoration(
-              color: _isConnected ? _emeraldLive.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: _isConnected ? _emeraldLive.withValues(alpha: 0.5) : Colors.white12,
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6.5,
-                  height: 6.5,
-                  decoration: BoxDecoration(
-                    color: _isConnected ? _emeraldLive : Colors.white38,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      if (_isConnected) BoxShadow(color: _emeraldLive.withValues(alpha: 0.6), blurRadius: 6),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  _isConnected ? 'LIVE' : 'STANDBY',
-                  style: TextStyle(
-                    fontSize: isDesktop ? 10 : 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.6,
-                    color: _isConnected ? _emeraldLive : Colors.white54,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_isConnected && _showStopwatch) ...[
+          _buildStatusPill(isDesktop: isDesktop),
+          if (_connState == HudConnectionState.live && _showStopwatch) ...[
             const SizedBox(width: 8),
             ValueListenableBuilder<int>(
               valueListenable: _sessionSecondsNotifier,
@@ -2607,61 +2985,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             ),
           ],
           const Spacer(),
+          _buildDrawerTogglePill(isDesktop: isDesktop),
+          const SizedBox(width: 8),
           if (!_isMenuExpanded) ...[
             _buildConnectButton(isDesktop: false),
             const SizedBox(width: 8),
           ],
           _buildInstallAppButton(isDesktop: isDesktop),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomToggleBar({required bool isDesktop}) {
-    return InkWell(
-      onTap: () => setState(() => _isMenuExpanded = !_isMenuExpanded),
-      child: Container(
-        height: isDesktop ? 24 : 22,
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          color: Color(0xFF101119),
-          border: Border(
-            bottom: BorderSide(color: _borderSubtle, width: 1),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-              decoration: BoxDecoration(
-                color: _surfaceElevated,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _borderSubtle, width: 0.8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _isMenuExpanded ? 'HIDE CONTROLS' : 'CONFIGURE STREAMS',
-                    style: const TextStyle(
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                      color: Colors.white54,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _isMenuExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                    color: _cyanAccent,
-                    size: 14,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -2675,14 +3006,13 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           : Container(
               width: double.infinity,
               decoration: const BoxDecoration(
-                color: _surfaceCard,
-                border: Border(bottom: BorderSide(color: Color(0xFF282B3D), width: 1)),
+                color: Color(0xFF0B0D13),
+                border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
               ),
               padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10, vertical: isDesktop ? 10 : 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Row 1: Platform Toggles + Inputs + Compact Connect CTA
                   Wrap(
                     alignment: WrapAlignment.center,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -2692,7 +3022,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                       Container(
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
-                          color: _bgDeep,
+                          color: _surfaceCard,
                           borderRadius: BorderRadius.circular(9),
                           border: Border.all(color: _borderSubtle),
                         ),
@@ -2716,12 +3046,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 8),
                   const Divider(height: 1, color: _borderSubtle),
                   const SizedBox(height: 6),
-                  // Row 2: Utility Toolbar
                   Row(
                     children: [
                       _buildToolbarIconBtn(
                         icon: Icons.favorite_rounded,
-                        color: const Color(0xFFFE2C55),
+                        color: _cyanAccent,
                         label: isDesktop ? 'Support' : null,
                         tooltip: 'Support OmniFeed',
                         onTap: _showSupportModal,
@@ -2793,7 +3122,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 15, color: color),
+              Icon(icon, size: 14.5, color: color),
               if (label != null) ...[
                 const SizedBox(width: 5),
                 Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white70)),
@@ -2822,7 +3151,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: _cyanAccent.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: _cyanAccent.withValues(alpha: 0.5), width: 0.8),
+                border: Border.all(color: _cyanAccent.withValues(alpha: 0.45), width: 0.8),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -2877,11 +3206,11 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     return Container(
       width: width,
       height: isDesktop ? 36 : 34,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 9),
       decoration: BoxDecoration(
-        color: _bgDeep,
+        color: _surfaceCard,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: accent.withValues(alpha: 0.45), width: 1),
+        border: Border.all(color: _borderSubtle, width: 1),
       ),
       child: Row(
         children: [
@@ -2891,12 +3220,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               onTap: () => _openColorPicker(platformKey),
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                width: 14,
-                height: 14,
+                width: 12,
+                height: 12,
                 decoration: BoxDecoration(
                   color: accent,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white70, width: 1),
+                  boxShadow: [
+                    BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 4),
+                  ],
                 ),
               ),
             ),
@@ -2933,12 +3264,19 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(horizontal: isDesktop ? 11 : 9, vertical: isDesktop ? 5.5 : 4.5),
         decoration: BoxDecoration(
-          color: active ? _neonPink : Colors.transparent,
+          gradient: active
+              ? const LinearGradient(
+                  colors: [_cyanAccent, _azureAccent],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: active ? null : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
           boxShadow: [
             if (active)
               BoxShadow(
-                color: _neonPink.withValues(alpha: 0.35),
+                color: _cyanAccent.withValues(alpha: 0.25),
                 blurRadius: 8,
               ),
           ],
@@ -2950,7 +3288,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               size: Size(isDesktop ? 12 : 11, isDesktop ? 12 : 11),
               painter: _PlatformLogoPainter(
                 platform: key,
-                color: active ? Colors.white : Colors.white60,
+                color: active ? Colors.black : Colors.white54,
               ),
             ),
             const SizedBox(width: 5),
@@ -2959,8 +3297,8 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               style: TextStyle(
                 fontSize: isDesktop ? 11.5 : 10.5,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 0.3,
-                color: active ? Colors.white : Colors.white60,
+                letterSpacing: 0.2,
+                color: active ? Colors.black : Colors.white60,
               ),
             ),
           ],
@@ -2977,17 +3315,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     return Container(
       decoration: BoxDecoration(
         color: _surfaceCard,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _borderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: const BoxDecoration(
-              color: _surfaceElevated,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
               border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
             ),
             child: Row(
@@ -2997,7 +3333,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 Text(
                   'EVENTS & ALERTS',
                   style: TextStyle(
-                    fontSize: (_chatFontSize * 0.85).clamp(9.5, 14.0),
+                    fontSize: (_chatFontSize * 0.85).clamp(9.5, 13.5),
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.7,
                     color: Colors.white70,
@@ -3009,7 +3345,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   builder: (_, _, _) => Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.07),
+                      color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -3042,59 +3378,60 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     final isSys = ev.platform == 'SYS';
                     final accentColor = isSys ? _cyanAccent : ev.badgeBg;
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: _surfaceElevated,
-                        borderRadius: BorderRadius.circular(7),
-                        border: Border(
-                          left: BorderSide(color: accentColor, width: 3),
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 1.5),
-                            child: isSys
-                                ? _buildBadge('SYS', _cyanAccent, isOutline: true)
-                                : _buildBadge(ev.platform, ev.badgeBg),
+                    return _AnimatedEntryRow(
+                      key: ValueKey('ev_${ev.id}'),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _surfaceElevated,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border(
+                            left: BorderSide(color: accentColor, width: 2.5),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: RichText(
-                              text: TextSpan(
-                                style: TextStyle(
-                                  fontSize: (_chatFontSize * 0.95).clamp(10.0, 18.0),
-                                  height: 1.3,
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: '${ev.user} ',
-                                    style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1.5),
+                              child: _buildBadge(ev.platform, accentColor),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: RichText(
+                                text: TextSpan(
+                                  style: TextStyle(
+                                    fontSize: (_chatFontSize * 0.95).clamp(10.0, 18.0),
+                                    height: 1.35,
                                   ),
-                                  if (ev.host != null && !isSys)
+                                  children: [
                                     TextSpan(
-                                      text: '(@${ev.host}) ',
+                                      text: '${ev.user} ',
+                                      style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                                    ),
+                                    if (ev.host != null && !isSys)
+                                      TextSpan(
+                                        text: '(@${ev.host}) ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: _getColorForHost(ev.host),
+                                          fontSize: (_chatFontSize * 0.85).clamp(9.0, 16.0),
+                                        ),
+                                      ),
+                                    TextSpan(
+                                      text: ev.text,
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: _getColorForHost(ev.host),
-                                        fontSize: (_chatFontSize * 0.85).clamp(9.0, 16.0),
+                                        color: isSys ? Colors.white70 : Colors.white,
+                                        fontWeight: isSys ? FontWeight.normal : FontWeight.w500,
                                       ),
                                     ),
-                                  TextSpan(
-                                    text: ev.text,
-                                    style: TextStyle(
-                                      color: isSys ? Colors.white70 : const Color(0xFFFFD600),
-                                      fontWeight: isSys ? FontWeight.normal : FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -3111,16 +3448,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     return Container(
       decoration: BoxDecoration(
         color: _surfaceCard,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _borderSubtle, width: 1),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: const BoxDecoration(
-              color: _surfaceElevated,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
               border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
             ),
             child: Row(
@@ -3130,7 +3465,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 Text(
                   'UNIFIED CHAT',
                   style: TextStyle(
-                    fontSize: (_chatFontSize * 0.85).clamp(9.5, 14.0),
+                    fontSize: (_chatFontSize * 0.85).clamp(9.5, 13.5),
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.7,
                     color: Colors.white70,
@@ -3160,11 +3495,14 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.sensors_rounded, size: 28, color: Colors.white.withValues(alpha: 0.12)),
-                        const SizedBox(height: 6),
+                        CustomPaint(
+                          size: const Size(32, 32),
+                          painter: const _OmniBrandMarkPainter(),
+                        ),
+                        const SizedBox(height: 10),
                         const Text(
                           'Connect a live stream to begin ingesting chat',
-                          style: TextStyle(fontSize: 12, color: Colors.white24),
+                          style: TextStyle(fontSize: 12, color: Colors.white30, fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -3172,7 +3510,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 }
                 return ListView.builder(
                   controller: _chatScrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                   itemCount: _chat.length,
                   itemBuilder: (c, i) {
                     final msg = _chat[i];
@@ -3181,83 +3519,85 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     final hostColor = msg.host != null ? _getColorForHost(msg.host) : null;
                     final isMod = msg.roles.contains('MOD');
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3.5),
-                      child: SelectableText.rich(
-                        TextSpan(
-                          style: TextStyle(
-                            fontSize: _chatFontSize,
-                            height: 1.38,
+                    return _AnimatedEntryRow(
+                      key: ValueKey('chat_${msg.id}'),
+                      child: _HoverableChatRow(
+                        child: SelectableText.rich(
+                          TextSpan(
+                            style: TextStyle(
+                              fontSize: _chatFontSize,
+                              height: 1.4,
+                            ),
+                            children: [
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: _buildBadge(msg.platform, msg.badgeBg),
+                                ),
+                              ),
+                              if (msg.host != null && hostColor != null)
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: hostColor.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: hostColor.withValues(alpha: 0.45), width: 0.8),
+                                      ),
+                                      child: Text(
+                                        '@${msg.host}',
+                                        style: TextStyle(
+                                          fontSize: (_chatFontSize - 2.5).clamp(8.5, 14.5),
+                                          color: hostColor,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (isMod)
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: _emeraldLive.withValues(alpha: 0.14),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: _emeraldLive.withValues(alpha: 0.55), width: 0.8),
+                                      ),
+                                      child: Text(
+                                        'MOD',
+                                        style: TextStyle(
+                                          fontSize: (_chatFontSize - 3).clamp(7.5, 13.0),
+                                          color: _emeraldLive,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              TextSpan(
+                                text: '${msg.user}  ',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: _chatUserColor,
+                                ),
+                              ),
+                              TextSpan(
+                                text: msg.text,
+                                style: TextStyle(
+                                  color: _chatTextColor,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
                           ),
-                          children: [
-                            WidgetSpan(
-                              alignment: PlaceholderAlignment.middle,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 5),
-                                child: _buildBadge(msg.platform, msg.badgeBg),
-                              ),
-                            ),
-                            if (msg.host != null && hostColor != null)
-                              WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 5),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: hostColor.withValues(alpha: 0.14),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: hostColor.withValues(alpha: 0.65), width: 0.9),
-                                    ),
-                                    child: Text(
-                                      '@${msg.host}',
-                                      style: TextStyle(
-                                        fontSize: (_chatFontSize - 2.5).clamp(8.0, 15.0),
-                                        color: hostColor,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            if (isMod)
-                              WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 5),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: _emeraldLive.withValues(alpha: 0.18),
-                                      borderRadius: BorderRadius.circular(3),
-                                      border: Border.all(color: _emeraldLive.withValues(alpha: 0.7), width: 0.8),
-                                    ),
-                                    child: Text(
-                                      'MOD',
-                                      style: TextStyle(
-                                        fontSize: (_chatFontSize - 3).clamp(7.5, 13.0),
-                                        color: _emeraldLive,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            TextSpan(
-                              text: '${msg.user}: ',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: _chatUserColor,
-                              ),
-                            ),
-                            TextSpan(
-                              text: msg.text,
-                              style: TextStyle(
-                                color: _chatTextColor,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     );
@@ -3279,7 +3619,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     final isHype = step >= 100 && !isCalibrating;
 
     Widget gaugeBar = Container(
-      height: 9,
+      height: 8,
       width: double.infinity,
       decoration: BoxDecoration(
         color: _bgDeep,
@@ -3300,7 +3640,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [color.withValues(alpha: 0.7), color],
+                    colors: [color.withValues(alpha: 0.65), color],
                   ),
                   borderRadius: BorderRadius.circular(5),
                 ),
@@ -3318,7 +3658,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(5),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withValues(alpha: _hypeAnimation.value * 0.65),
+                    color: color.withValues(alpha: _hypeAnimation.value * 0.6),
                     blurRadius: 10,
                     spreadRadius: 1,
                   ),
@@ -3333,7 +3673,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     }
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 9.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3346,7 +3686,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: (_chatFontSize * 0.88).clamp(9.5, 14.0),
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     color: color,
                   ),
                 ),
@@ -3409,17 +3749,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     return Container(
       decoration: BoxDecoration(
         color: _surfaceCard,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _borderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: const BoxDecoration(
-              color: _surfaceElevated,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
               border: Border(bottom: BorderSide(color: _borderSubtle, width: 1)),
             ),
             child: Row(
@@ -3432,7 +3770,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     Text(
                       'TELEMETRY',
                       style: TextStyle(
-                        fontSize: (_chatFontSize * 0.85).clamp(9.5, 14.0),
+                        fontSize: (_chatFontSize * 0.85).clamp(9.5, 13.5),
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.7,
                         color: Colors.white70,
@@ -3541,7 +3879,9 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           _statusText.toUpperCase(),
                           style: TextStyle(
                             fontSize: 10.5,
-                            color: _isConnected ? _emeraldLive : Colors.white60,
+                            color: _connState == HudConnectionState.live
+                                ? _emeraldLive
+                                : (_connState == HudConnectionState.connecting ? _amberConnecting : Colors.white60),
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -3549,10 +3889,10 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   if (_showVelocity && activeStreams.isNotEmpty) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     const Row(
                       children: [
-                        Icon(Icons.local_fire_department_rounded, size: 13, color: _neonPink),
+                        Icon(Icons.bolt_rounded, size: 14, color: _cyanAccent),
                         SizedBox(width: 4),
                         Text(
                           'HYPE METER',
@@ -3591,14 +3931,15 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             setState(() => _chatVisible[key] = !visible);
             _chatVersion.value++;
           },
-          borderRadius: BorderRadius.circular(5),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+          borderRadius: BorderRadius.circular(6),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
             decoration: BoxDecoration(
-              color: visible ? color.withValues(alpha: 0.18) : Colors.transparent,
-              borderRadius: BorderRadius.circular(5),
+              color: visible ? color.withValues(alpha: 0.14) : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: visible ? color : Colors.white24,
+                color: visible ? color.withValues(alpha: 0.55) : _borderSubtle,
                 width: 1,
               ),
             ),
@@ -3606,7 +3947,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
               size: const Size(11, 11),
               painter: _PlatformLogoPainter(
                 platform: key,
-                color: visible ? Colors.white : Colors.white38,
+                color: visible ? color : Colors.white24,
               ),
             ),
           ),
@@ -3615,41 +3956,40 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildBadge(String label, Color color, {bool isOutline = false}) {
-    final isDarkText = color.computeLuminance() > 0.55;
-    final fgColor = isOutline ? color : (isDarkText ? Colors.black : Colors.white);
+  /// Soft translucent tinted glass badge instead of harsh 100%-opacity blocks
+  Widget _buildBadge(String label, Color color) {
     final isPlatformLogo = label == 'TT' || label == 'TW' || label == 'KC' || label == 'YT';
 
     if (isPlatformLogo) {
-      final iconSize = (_chatFontSize - 1).clamp(10.0, 14.0);
+      final iconSize = (_chatFontSize - 1).clamp(10.0, 13.5);
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2.5),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
         decoration: BoxDecoration(
-          color: isOutline ? color.withValues(alpha: 0.15) : color,
-          borderRadius: BorderRadius.circular(4),
-          border: isOutline ? Border.all(color: color, width: 1) : null,
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: color.withValues(alpha: 0.45), width: 0.9),
         ),
         child: CustomPaint(
           size: Size(iconSize, iconSize),
-          painter: _PlatformLogoPainter(platform: label, color: fgColor),
+          painter: _PlatformLogoPainter(platform: label, color: color),
         ),
       );
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 1.5),
       decoration: BoxDecoration(
-        color: isOutline ? color.withValues(alpha: 0.15) : color,
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(4),
-        border: isOutline ? Border.all(color: color, width: 1) : null,
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 0.9),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: fgColor,
+          color: color,
           fontWeight: FontWeight.w900,
-          fontSize: (_chatFontSize - 3).clamp(8.0, 12.0),
-          letterSpacing: 0.3,
+          fontSize: (_chatFontSize - 3).clamp(8.0, 11.5),
+          letterSpacing: 0.4,
         ),
       ),
     );
@@ -3669,18 +4009,17 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
             children: [
               _buildPersistentTopBar(isDesktop: isLandscape),
               _buildCommandDrawer(isDesktop: isLandscape),
-              _buildBottomToggleBar(isDesktop: isLandscape),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(6.0),
+                  padding: const EdgeInsets.all(8.0),
                   child: isLandscape
                       ? Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Expanded(flex: 3, child: _buildEventsPane()),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
                             Expanded(flex: 5, child: _buildChatPane()),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
                             Expanded(flex: 2, child: _buildStatsPane()),
                           ],
                         )
@@ -3688,7 +4027,6 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                           children: [
                             Expanded(flex: 6, child: _buildChatPane()),
                             const SizedBox(height: 6),
-                            // Segmented Pill Bar for Portrait Mode
                             Container(
                               height: 34,
                               padding: const EdgeInsets.all(3),
@@ -3709,7 +4047,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                                           color: _portraitTabIndex == 0 ? _surfaceElevated : Colors.transparent,
                                           borderRadius: BorderRadius.circular(6),
                                           border: _portraitTabIndex == 0
-                                              ? Border.all(color: _cyanAccent.withValues(alpha: 0.5), width: 1)
+                                              ? Border.all(color: _cyanAccent.withValues(alpha: 0.45), width: 1)
                                               : null,
                                         ),
                                         child: ValueListenableBuilder<int>(
@@ -3738,7 +4076,7 @@ class _HudScreenState extends State<HudScreen> with TickerProviderStateMixin {
                                           color: _portraitTabIndex == 1 ? _surfaceElevated : Colors.transparent,
                                           borderRadius: BorderRadius.circular(6),
                                           border: _portraitTabIndex == 1
-                                              ? Border.all(color: _cyanAccent.withValues(alpha: 0.5), width: 1)
+                                              ? Border.all(color: _cyanAccent.withValues(alpha: 0.45), width: 1)
                                               : null,
                                         ),
                                         child: Text(
